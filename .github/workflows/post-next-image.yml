@@ -2,8 +2,8 @@ name: 'esnupi.me Post Next Image'
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "50 * * * *"
+  #schedule:
+    #- cron: "50 * * * *"
 
 jobs:
   post-next-image:
