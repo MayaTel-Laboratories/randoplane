@@ -70,6 +70,7 @@ jobs:
         run: |
           git config user.name "esnupi"
           git config user.email "esnupi@users.noreply.github.com"
+          git config --unset-all http.https://github.com/.extraheader || true
           git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/MayaTelLabs/esnupi.me.git
           if git rev-parse --verify post-history >/dev/null 2>&1; then
             git checkout post-history
