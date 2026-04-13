@@ -51,7 +51,7 @@ jobs:
           if [ -n "$OVERRIDE_IMAGE" ]; then
             echo "override detected, posting $OVERRIDE_IMAGE..."
             SELECTED_IMAGE="$OVERRIDE_IMAGE"
-            gh variable set OVERRIDE_IMAGE --body ""
+            gh variable delete OVERRIDE_IMAGE || true
           else
             echo "scanning catalogue..."
             ALL_IMAGES=$(git ls-tree -r HEAD:imagequeue --name-only)
