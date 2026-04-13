@@ -72,12 +72,14 @@ jobs:
           git config user.email "esnupi@users.noreply.github.com"
           git config --unset-all http.https://github.com/.extraheader || true
           git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/MayaTelLabs/esnupi.me.git
+          cp post-history.txt /tmp/post-history.txt
           if git rev-parse --verify post-history >/dev/null 2>&1; then
             git checkout post-history
           else
             git checkout --orphan post-history
             git rm -rf . 2>/dev/null || true
           fi
+          cp /tmp/post-history.txt post-history.txt
           git add post-history.txt
           git commit -m "update post history" || echo "no changes to commit"
           git push origin post-history
