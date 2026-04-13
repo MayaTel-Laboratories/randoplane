@@ -1,4 +1,5 @@
-import { postImage } from './clients/at';
+import { postImage as postToBluesky } from './clients/at';
+import { postImage as postToMastodon } from './clients/mastodon';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
 dotenv.config();
@@ -55,11 +56,24 @@ async function main() {
   const postText = generateCaption(imageDate);
   const postAltText = generateAltText(imageDate);
 
-  await postImage({
+  const postOptions = {
     path: absolutePath,
     text: postText,
     altText: postAltText,
-  });
+  };
+
+  const results = await Promise.allSettled([
+    postToBluesky(postOptions),
+    postToMastodon(postOptions),
+  ]);
+
+  const failures = results.filter(r => r.status === 'rejected') as PromiseRejectedResult[];
+  if (failures.length > 0) {
+    failures.forEach(f => console.error('failed:', f.reason));
+    if (failures.length === results.length) {
+      throw new Error('all platforms failed.');
+    }
+  }
 }
 
 main().catch(err => {
