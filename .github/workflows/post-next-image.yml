@@ -10,25 +10,34 @@ jobs:
     name: Post Next Image
     runs-on: ubuntu-latest
     permissions:
-      actions: write
-      contents: read
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
           sparse-checkout: |
             /*
             !imagequeue
           sparse-checkout-cone-mode: false
           fetch-depth: 1
 
-      - name: Setup Node.js
+      - name: read the all-new no-no list
+        run: |
+          git fetch origin post-history:post-history 2>/dev/null || true
+          if git show post-history:post-history.txt >/dev/null 2>&1; then
+            git show post-history:post-history.txt > post-history.txt
+          else
+            touch post-history.txt
+          fi
+
+      - name: setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: 'yarn'
 
-      - name: Install dependencies
+      - name: install dependencies
         run: yarn install --immutable
 
       - name: Poast!
@@ -36,23 +45,35 @@ jobs:
           NODE_OPTIONS: "--no-deprecation"
           BSKY_IDENTIFIER: ${{ secrets.BSKY_IDENTIFIER }}
           BSKY_PASSWORD: ${{ secrets.BSKY_PASSWORD }}
-          GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
         run: |
-          HISTORY_LIST=$(gh variable get LAST_IMAGE_NAME || echo "")
           echo "scanning catalogue..."
           ALL_IMAGES=$(git ls-tree -r HEAD:imagequeue --name-only)
-          SELECTED_IMAGE=$(echo "$ALL_IMAGES" | grep -vFf <(echo "$HISTORY_LIST" | tr ',' '\n') | shuf -n 1)
-          if [ -z "$SELECTED_IMAGE" ]; then
-            echo "FATAL: you fucked it"
-            exit 1
+          AVAILABLE=$(echo "$ALL_IMAGES" | grep -vFxf post-history.txt || true)
+          if [ -z "$AVAILABLE" ]; then
+            echo "all images have been posted. that's wild, honestly. clearing history and starting anew..."
+            > post-history.txt
+            AVAILABLE="$ALL_IMAGES"
           fi
+          SELECTED_IMAGE=$(echo "$AVAILABLE" | shuf -n 1)
           echo "your lucky RNG pull of the hour: $SELECTED_IMAGE"
           mkdir -p imagequeue
           git sparse-checkout add "/imagequeue/$SELECTED_IMAGE"
           git checkout "imagequeue/$SELECTED_IMAGE"
           export IMAGE_TO_POST="imagequeue/$SELECTED_IMAGE"
           yarn --silent run start
-          echo "" # Corrected output line break
-          NEW_HISTORY=$(echo "$SELECTED_IMAGE,$HISTORY_LIST" | tr ',' '\n' | grep -v '^$' | head -n 24 | paste -sd "," -)
-          echo "updating the no-no list..."
-          gh variable set LAST_IMAGE_NAME --body "$NEW_HISTORY"
+          echo ""
+          echo "$SELECTED_IMAGE" >> post-history.txt
+
+      - name: update the all-new no-no list
+        run: |
+          git config user.name "esnupi"
+          git config user.email "esnupi@users.noreply.github.com"
+          if git rev-parse --verify post-history >/dev/null 2>&1; then
+            git checkout post-history
+          else
+            git checkout --orphan post-history
+            git rm -rf . 2>/dev/null || true
+          fi
+          git add post-history.txt
+          git commit -m "update post history" || echo "no changes to commit"
+          git push origin post-history

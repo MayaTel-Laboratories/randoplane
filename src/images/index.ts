@@ -27,7 +27,7 @@ function getHistoricalThanksgivings(currentYear: number): string[] {
   }
   return cachedThanksgivingDates;
 }
-async function getNextImage(history: string[] = []): Promise<RandomImage> {
+async function getNextImage(): Promise<RandomImage> {
   if (process.env.IMAGE_TO_POST) {
     const preSelectedPath = process.env.IMAGE_TO_POST;
     console.log(`hello, index.ts here. i'm confirming that the RNG has selected ${preSelectedPath}`);
@@ -50,7 +50,7 @@ async function getNextImage(history: string[] = []): Promise<RandomImage> {
   let holidayFiles: string[] = [];
   const dir = await fs.opendir(imagesDir);
   for await (const entry of dir) {
-    if (entry.isFile() && imageRegex.test(entry.name) && !history.includes(entry.name)) {
+    if (entry.isFile() && imageRegex.test(entry.name)) {
       validFiles.push(entry.name);
       if (isThanksgiving && tgDates.some(d => entry.name.includes(d))) {
         holidayFiles.push(entry.name);
@@ -61,9 +61,6 @@ async function getNextImage(history: string[] = []): Promise<RandomImage> {
   }
   const selectionPool = holidayFiles.length > 0 ? holidayFiles : validFiles;
   if (selectionPool.length === 0) {
-    if (history.length > 0) {
-        return getNextImage([]); 
-    }
     throw new Error('No valid image files found in directory.');
   }
   const imageName = selectionPool[Math.floor(Math.random() * selectionPool.length)];
