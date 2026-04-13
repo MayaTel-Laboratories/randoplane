@@ -124,4 +124,7 @@ jobs:
             git checkout --orphan post-history
             git rm -rf . 2>/dev/null || true
           fi
-          cp /tmp/post-history.txt post-](#)
+          cp /tmp/post-history.txt post-history.txt
+          git add post-history.txt
+          git commit -m "update post history" || echo "no changes to commit"
+          git push origin post-history
