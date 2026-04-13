@@ -54,6 +54,51 @@ jobs:
             > post-history.txt
             AVAILABLE="$ALL_IMAGES"
           fi
+
+          TODAY=$(TZ="America/Los_Angeles" date +%m-%d)
+          HOLIDAY_FILTER=""
+
+          if [ "$TODAY" = "10-31" ] || [ "$TODAY" = "12-25" ] || [ "$TODAY" = "01-01" ]; then
+            echo "it's a holiday! filtering for $TODAY comics..."
+            HOLIDAY_FILTER="$TODAY"
+          else
+            DOW=$(TZ="America/Los_Angeles" date +%u)
+            MONTH=$(TZ="America/Los_Angeles" date +%m)
+            DAY=$(TZ="America/Los_Angeles" date +%d)
+            if [ "$DOW" = "4" ] && [ "$MONTH" = "11" ] && [ "$DAY" -ge 22 ] && [ "$DAY" -le 28 ]; then
+              echo "it's thanksgiving! filtering for thanksgiving comics..."
+              HOLIDAY_FILTER="thanksgiving"
+            fi
+          fi
+
+          if [ -n "$HOLIDAY_FILTER" ]; then
+            if [ "$HOLIDAY_FILTER" = "thanksgiving" ]; then
+              HOLIDAY_AVAILABLE=$(echo "$AVAILABLE" | grep -Ff thanksgiving-dates.txt || true)
+            else
+              HOLIDAY_AVAILABLE=$(echo "$AVAILABLE" | grep "$HOLIDAY_FILTER" || true)
+            fi
+
+            if [ -z "$HOLIDAY_AVAILABLE" ]; then
+              echo "all holiday comics have seemingly been posted. cleaning..."
+              if [ "$HOLIDAY_FILTER" = "thanksgiving" ]; then
+                grep -vFf thanksgiving-dates.txt post-history.txt > /tmp/cleaned-history.txt || true
+              else
+                grep -v "$HOLIDAY_FILTER" post-history.txt > /tmp/cleaned-history.txt || true
+              fi
+              cp /tmp/cleaned-history.txt post-history.txt
+              AVAILABLE=$(echo "$ALL_IMAGES" | grep -vFxf post-history.txt || true)
+              if [ "$HOLIDAY_FILTER" = "thanksgiving" ]; then
+                HOLIDAY_AVAILABLE=$(echo "$AVAILABLE" | grep -Ff thanksgiving-dates.txt || true)
+              else
+                HOLIDAY_AVAILABLE=$(echo "$AVAILABLE" | grep "$HOLIDAY_FILTER" || true)
+              fi
+            fi
+
+            if [ -n "$HOLIDAY_AVAILABLE" ]; then
+              AVAILABLE="$HOLIDAY_AVAILABLE"
+            fi
+          fi
+
           SELECTED_IMAGE=$(echo "$AVAILABLE" | shuf -n 1)
           echo "your lucky RNG pull of the hour: $SELECTED_IMAGE"
           mkdir -p imagequeue
@@ -79,7 +124,4 @@ jobs:
             git checkout --orphan post-history
             git rm -rf . 2>/dev/null || true
           fi
-          cp /tmp/post-history.txt post-history.txt
-          git add post-history.txt
-          git commit -m "update post history" || echo "no changes to commit"
-          git push origin post-history
+          cp /tmp/post-history.txt post-](#)
