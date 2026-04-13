@@ -45,61 +45,70 @@ jobs:
           NODE_OPTIONS: "--no-deprecation"
           BSKY_IDENTIFIER: ${{ secrets.BSKY_IDENTIFIER }}
           BSKY_PASSWORD: ${{ secrets.BSKY_PASSWORD }}
+          OVERRIDE_IMAGE: ${{ vars.OVERRIDE_IMAGE }}
+          GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
         run: |
-          echo "scanning catalogue..."
-          ALL_IMAGES=$(git ls-tree -r HEAD:imagequeue --name-only)
-          AVAILABLE=$(echo "$ALL_IMAGES" | grep -vFxf post-history.txt || true)
-          if [ -z "$AVAILABLE" ]; then
-            echo "all images have been posted. that's wild, honestly. clearing history and starting anew..."
-            > post-history.txt
-            AVAILABLE="$ALL_IMAGES"
-          fi
-
-          TODAY=$(TZ="America/Los_Angeles" date +%m-%d)
-          HOLIDAY_FILTER=""
-
-          if [ "$TODAY" = "10-31" ] || [ "$TODAY" = "12-25" ] || [ "$TODAY" = "01-01" ]; then
-            echo "it's a holiday! filtering for $TODAY comics..."
-            HOLIDAY_FILTER="$TODAY"
+          if [ -n "$OVERRIDE_IMAGE" ]; then
+            echo "override detected, posting $OVERRIDE_IMAGE..."
+            SELECTED_IMAGE="$OVERRIDE_IMAGE"
+            gh variable set OVERRIDE_IMAGE --body ""
           else
-            DOW=$(TZ="America/Los_Angeles" date +%u)
-            MONTH=$(TZ="America/Los_Angeles" date +%m)
-            DAY=$(TZ="America/Los_Angeles" date +%d)
-            if [ "$DOW" = "4" ] && [ "$MONTH" = "11" ] && [ "$DAY" -ge 22 ] && [ "$DAY" -le 28 ]; then
-              echo "it's thanksgiving! filtering for thanksgiving comics..."
-              HOLIDAY_FILTER="thanksgiving"
+            echo "scanning catalogue..."
+            ALL_IMAGES=$(git ls-tree -r HEAD:imagequeue --name-only)
+            AVAILABLE=$(echo "$ALL_IMAGES" | grep -vFxf post-history.txt || true)
+            if [ -z "$AVAILABLE" ]; then
+              echo "all images have been posted. that's wild, honestly. clearing history and starting anew..."
+              > post-history.txt
+              AVAILABLE="$ALL_IMAGES"
             fi
-          fi
 
-          if [ -n "$HOLIDAY_FILTER" ]; then
-            if [ "$HOLIDAY_FILTER" = "thanksgiving" ]; then
-              HOLIDAY_AVAILABLE=$(echo "$AVAILABLE" | grep -Ff thanksgiving-dates.txt || true)
+            TODAY=$(TZ="America/Los_Angeles" date +%m-%d)
+            HOLIDAY_FILTER=""
+
+            if [ "$TODAY" = "10-31" ] || [ "$TODAY" = "12-25" ] || [ "$TODAY" = "01-01" ]; then
+              echo "it's a holiday! filtering for $TODAY comics..."
+              HOLIDAY_FILTER="$TODAY"
             else
-              HOLIDAY_AVAILABLE=$(echo "$AVAILABLE" | grep "$HOLIDAY_FILTER" || true)
+              DOW=$(TZ="America/Los_Angeles" date +%u)
+              MONTH=$(TZ="America/Los_Angeles" date +%m)
+              DAY=$(TZ="America/Los_Angeles" date +%d)
+              if [ "$DOW" = "4" ] && [ "$MONTH" = "11" ] && [ "$DAY" -ge 22 ] && [ "$DAY" -le 28 ]; then
+                echo "it's thanksgiving! filtering for thanksgiving comics..."
+                HOLIDAY_FILTER="thanksgiving"
+              fi
             fi
 
-            if [ -z "$HOLIDAY_AVAILABLE" ]; then
-              echo "all holiday comics have seemingly been posted. cleaning..."
-              if [ "$HOLIDAY_FILTER" = "thanksgiving" ]; then
-                grep -vFf thanksgiving-dates.txt post-history.txt > /tmp/cleaned-history.txt || true
-              else
-                grep -v "$HOLIDAY_FILTER" post-history.txt > /tmp/cleaned-history.txt || true
-              fi
-              cp /tmp/cleaned-history.txt post-history.txt
-              AVAILABLE=$(echo "$ALL_IMAGES" | grep -vFxf post-history.txt || true)
+            if [ -n "$HOLIDAY_FILTER" ]; then
               if [ "$HOLIDAY_FILTER" = "thanksgiving" ]; then
                 HOLIDAY_AVAILABLE=$(echo "$AVAILABLE" | grep -Ff thanksgiving-dates.txt || true)
               else
                 HOLIDAY_AVAILABLE=$(echo "$AVAILABLE" | grep "$HOLIDAY_FILTER" || true)
               fi
+
+              if [ -z "$HOLIDAY_AVAILABLE" ]; then
+                echo "all holiday comics have seemingly been posted. cleaning..."
+                if [ "$HOLIDAY_FILTER" = "thanksgiving" ]; then
+                  grep -vFf thanksgiving-dates.txt post-history.txt > /tmp/cleaned-history.txt || true
+                else
+                  grep -v "$HOLIDAY_FILTER" post-history.txt > /tmp/cleaned-history.txt || true
+                fi
+                cp /tmp/cleaned-history.txt post-history.txt
+                AVAILABLE=$(echo "$ALL_IMAGES" | grep -vFxf post-history.txt || true)
+                if [ "$HOLIDAY_FILTER" = "thanksgiving" ]; then
+                  HOLIDAY_AVAILABLE=$(echo "$AVAILABLE" | grep -Ff thanksgiving-dates.txt || true)
+                else
+                  HOLIDAY_AVAILABLE=$(echo "$AVAILABLE" | grep "$HOLIDAY_FILTER" || true)
+                fi
+              fi
+
+              if [ -n "$HOLIDAY_AVAILABLE" ]; then
+                AVAILABLE="$HOLIDAY_AVAILABLE"
+              fi
             fi
 
-            if [ -n "$HOLIDAY_AVAILABLE" ]; then
-              AVAILABLE="$HOLIDAY_AVAILABLE"
-            fi
+            SELECTED_IMAGE=$(echo "$AVAILABLE" | shuf -n 1)
           fi
 
-          SELECTED_IMAGE=$(echo "$AVAILABLE" | shuf -n 1)
           echo "your lucky RNG pull of the hour: $SELECTED_IMAGE"
           mkdir -p imagequeue
           git sparse-checkout add "/imagequeue/$SELECTED_IMAGE"
