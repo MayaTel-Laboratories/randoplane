@@ -39,15 +39,13 @@ jobs:
           PORT: 4000
         run: |
           cd jetapi
-          # Run JetAPI in background; keep logs
           nohup go run ./cmd/jetapi > jetapi.log 2>&1 & echo $! > /tmp/jetapi.pid
-          # Wait for service to be available
           for i in $(seq 1 30); do
             if curl -sS --fail http://127.0.0.1:4000/documentation >/dev/null 2>&1; then
               echo "JetAPI is up"
               break
             fi
-            echo "Waiting for JetAPI..."
+            echo "waiting for JetAPI..."
             sleep 1
           done
           if ! curl -sS --fail http://127.0.0.1:4000/documentation >/dev/null 2>&1; then
@@ -70,7 +68,6 @@ jobs:
         id: pick
         shell: bash
         run: |
-          # Priority: workflow input override -> repo variable OVERRIDE_REG -> regs.txt -> fail
           INPUT_OVERRIDE="${{ github.event.inputs.override_reg || '' }}"
           VAR_OVERRIDE="${{ vars.OVERRIDE_REG || '' }}"
           if [ -n "$INPUT_OVERRIDE" ]; then
@@ -92,21 +89,16 @@ jobs:
 
       - name: Run bot (jetapi mode)
         env:
-          # Bluesky / Mastodon secrets (must be configured in the repo)
           BSKY_IDENTIFIER: ${{ secrets.BSKY_IDENTIFIER }}
           BSKY_PASSWORD: ${{ secrets.BSKY_PASSWORD }}
           MASTODON_ACCESS_TOKEN: ${{ secrets.MASTODON_ACCESS_TOKEN }}
-          # JetAPI local address (the job started the service bound to 127.0.0.1:4000)
           JETAPI_BASE: 'http://127.0.0.1:4000'
           POST_MODE: 'jetapi'
           JETAPI_PHOTOS: '3'
-          # Optional: prefer thumbnails instead of full image (reduce risk)
           JETAPI_USE_THUMBNAIL: 'true'
-          # Optional dry-run toggle for safe testing; set to 'true' to skip actual posting
           POST_DRY_RUN: ${{ vars.POST_DRY_RUN || 'false' }}
         run: |
           echo "About to run bot with JETAPI_REG=$JETAPI_REG"
-          # run the TypeScript entry (ts-node)
           yarn --silent run start
 
       - name: Stop JetAPI
@@ -118,7 +110,6 @@ jobs:
             echo "Killing JetAPI pid $PID"
             kill "$PID" || true
           fi
-          # Show logs for debugging
           if [ -f jetapi/jetapi.log ]; then
             echo "---- JetAPI log head ----"
             head -n 200 jetapi/jetapi.log || true
