@@ -20,6 +20,13 @@ export type RoowusImage = {
   [k: string]: any;
 };
 
+const MILITARY_KEYWORDS = [
+  'air force', 'army', 'navy', 'naval', 'marine', 'marines', 'military',
+  'defence', 'defense', 'luftwaffe', 'armée', 'fuerza aérea', 'aeronautica',
+  'royal air', 'coast guard', 'national guard', 'air command', 'air wing',
+  'usaf', 'usmc', 'raf ', 'jmsdf', 'plaaf',
+];
+
 const BASE = ((process.env.ROOWUS_BASE || 'https://randoplane-jetphotos-api.kingforpa.workers.dev').toString().trim()).replace(/\/+$/, '');
 const DEFAULT_PHOTOS = Number(process.env.JP_PHOTOS || 5);
 const CONCURRENCY = Number(process.env.JP_CONCURRENCY || 6);
@@ -100,11 +107,15 @@ function makeAbsoluteJetphotosLink(link?: string) {
   return s;
 }
 
+function cleanField(v: any): string | undefined {
+  if (v === null || v === undefined) return undefined;
+  try {
+    const s = String(v).split(/[\n\r]/)[0].trim();
+    return s || undefined;
+  } catch { return undefined; }
+}
+
 function normalizePhoto(p: any): RoowusImage {
-  const get = (v: any) => {
-    if (v === null || v === undefined) return undefined;
-    try { return String(v).trim() || undefined; } catch { return undefined; }
-  };
   const linkCandidate =
     p.photoPageUrl ??
     p.photoPageURL ??
@@ -119,27 +130,35 @@ function normalizePhoto(p: any): RoowusImage {
     p.link ??
     p.pageUrlFull ??
     p.photo_page_url_full;
-  const img = get(p.imageUrl ?? p.image ?? p.fullUrl ?? (p.urls && p.urls.full));
-  const thumb = get(p.thumbnailUrl ?? p.thumb ?? (p.urls && p.urls.thumb) ?? (p.urls && p.urls.small));
-  const photographer = get(p.photographer ?? p.photographerName ?? p.author);
-  const aircraft = get(p.aircraftType ?? p.model ?? p.aircraft);
-  const airline = get(p.airline ?? p.airlineName);
-  const registration = get(p.registration ?? p.reg ?? p.tailNumber ?? p.tail_number);
-  const when = get(p.year ?? p.taken_at ?? p.photoDate ?? p.uploadedDate);
-  const location = get(p.location ?? p.airport ?? p.locationName ?? p.location_full);
-  const photoId = get(p.photoId ?? p.id ?? p.photo_id);
+  const img = cleanField(p.imageUrl ?? p.image ?? p.fullUrl ?? (p.urls && p.urls.full));
+  const thumb = cleanField(p.thumbnailUrl ?? p.thumb ?? (p.urls && p.urls.thumb) ?? (p.urls && p.urls.small));
+  const photographer = cleanField(p.photographer ?? p.photographerName ?? p.author);
+  const aircraft = cleanField(p.aircraftType ?? p.model ?? p.aircraft);
+  const airline = cleanField(p.airline ?? p.airlineName);
+  const registration = cleanField(p.registration ?? p.reg ?? p.tailNumber ?? p.tail_number);
+  const when = cleanField(p.year ?? p.taken_at ?? p.photoDate ?? p.uploadedDate);
+  const location = cleanField(p.location ?? p.airport ?? p.locationName ?? p.location_full);
+  const photoId = cleanField(p.photoId ?? p.id ?? p.photo_id);
   return {
     photoId,
     Image: img,
     Thumbnail: thumb,
     Photographer: photographer,
-    Link: makeAbsoluteJetphotosLink(get(linkCandidate)) || (photoId ? `https://www.jetphotos.com/photo/${photoId}` : undefined),
+    Link: makeAbsoluteJetphotosLink(cleanField(linkCandidate)) || (photoId ? `https://www.jetphotos.com/photo/${photoId}` : undefined),
     Aircraft: aircraft,
     Airline: airline,
     Registration: registration,
     DateTaken: when,
     Location: location,
   };
+}
+
+function isMilitary(img: RoowusImage): boolean {
+  const haystack = [img.Airline, img.Aircraft, img.Registration, img.Location]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  return MILITARY_KEYWORDS.some(kw => haystack.includes(kw));
 }
 
 async function retry<T>(fn: () => Promise<T>, attempts = 3, backoffMs = 300): Promise<T> {
@@ -216,7 +235,8 @@ export function chooseUsableImage(res: { Images?: RoowusImage[] } | null) {
     const hasPhot = !!(i.Photographer && String(i.Photographer).trim().length > 0);
     const hasLink = !!(i.Link && String(i.Link).trim().length > 0);
     const notPosted = !(i.photoId && posted.has(String(i.photoId)));
-    return hasImage && hasPhot && hasLink && notPosted;
+    const notMilitary = !isMilitary(i);
+    return hasImage && hasPhot && hasLink && notPosted && notMilitary;
   });
   if (withAttr.length > 0) return withAttr[Math.floor(Math.random() * withAttr.length)];
   const fallback = res.Images.filter(i => {
@@ -224,10 +244,11 @@ export function chooseUsableImage(res: { Images?: RoowusImage[] } | null) {
     const hasImage = !!((i.Image && String(i.Image).trim().length > 0) || (i.Thumbnail && String(i.Thumbnail).trim().length > 0));
     const hasLink = !!(i.Link && String(i.Link).trim().length > 0);
     const notPosted = !(i.photoId && posted.has(String(i.photoId)));
-    return hasImage && hasLink && notPosted;
+    const notMilitary = !isMilitary(i);
+    return hasImage && hasLink && notPosted && notMilitary;
   });
   if (fallback.length > 0) return fallback[Math.floor(Math.random() * fallback.length)];
-  const anyUnposted = res.Images.filter(i => i && !(i.photoId && posted.has(String(i.photoId))));
+  const anyUnposted = res.Images.filter(i => i && !(i.photoId && posted.has(String(i.photoId))) && !isMilitary(i));
   if (anyUnposted.length > 0) return anyUnposted[Math.floor(Math.random() * anyUnposted.length)];
   return res.Images[Math.floor(Math.random() * res.Images.length)];
 }
@@ -259,7 +280,14 @@ function trimAirportName(location: string): string {
   if (parenIdx !== -1) name = name.slice(0, parenIdx).trim();
   const commaIdx = name.indexOf(',');
   if (commaIdx !== -1) name = name.slice(0, commaIdx).trim();
+  const dashIdx = name.indexOf(' - ');
+  if (dashIdx !== -1) name = name.slice(0, dashIdx).trim();
   return name;
+}
+
+function aOrAn(word: string): string {
+  const first = word.trim()[0]?.toLowerCase();
+  return first && 'aeiou'.includes(first) ? 'An' : 'A';
 }
 
 export function composeCaption(regOrKeyword: string, img: RoowusImage) {
@@ -271,15 +299,18 @@ export function composeCaption(regOrKeyword: string, img: RoowusImage) {
   const when = (img?.DateTaken || '').toString().trim();
   const photographer = (img?.Photographer || '').toString().trim();
 
-  let main = aircraft || regOrKeyword;
-  if (registration) main += `, with registration ${registration}`;
+  const subjectWord = aircraft || regOrKeyword;
+  const article = aOrAn(subjectWord);
+
+  let main = `${article} ${subjectWord}`;
+  if (registration) main += `, registered ${registration}`;
   if (airline) main += ` and operated by ${airline}`;
   if (location) main += `, at ${location}`;
   if (when) main += `, on ${when}`;
 
   const photoBy = photographer ? `Photo by ${photographer} on JetPhotos:` : `Photo on JetPhotos:`;
   const link = img?.Link ? String(img.Link).trim() : '';
-  const captionText = link ? `${main}.\n\n${photoBy}\n${link}` : `${main}. ${photoBy}`;
+  const captionText = link ? `${main}.\n\n${photoBy}\n${link}.` : `${main}. ${photoBy}`;
   return { text: captionText };
 }
 
