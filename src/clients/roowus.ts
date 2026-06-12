@@ -139,7 +139,8 @@ function normalizePhoto(p: any): RoowusImage {
   const img = cleanField(p.imageUrl ?? p.image ?? p.fullUrl ?? (p.urls && p.urls.full));
   const thumb = cleanField(p.thumbnailUrl ?? p.thumb ?? (p.urls && p.urls.thumb) ?? (p.urls && p.urls.small));
   const photographer = cleanField(p.photographer ?? p.photographerName ?? p.author);
-  const aircraft = cleanField(p.aircraftType ?? p.model ?? p.aircraft);
+  const rawAircraft = cleanField(p.aircraftType ?? p.model ?? p.aircraft);
+  const aircraft = rawAircraft ? rawAircraft.replace(/([a-z])([A-Z])/g, '$1 / $2') : undefined;
   const airline = cleanField(p.airline ?? p.airlineName);
   const registration = cleanRegistration(cleanField(p.registration ?? p.reg ?? p.tailNumber ?? p.tail_number));
   const when = cleanField(p.year ?? p.taken_at ?? p.photoDate ?? p.uploadedDate);
@@ -329,7 +330,11 @@ export function composeCaption(regOrKeyword: string, img: RoowusImage) {
   if (registration) main += `, registered ${registration}`;
   if (airline) main += ` and operated by ${airline}`;
   if (location) main += `, at ${location}`;
-  if (when) main += `, on ${when}`;
+  if (when) {
+    const unknownDate = when.includes('-00');
+    const year = when.split('-')[0];
+    main += unknownDate ? `, on an unknown date in ${year}` : `, on ${when}`;
+  }
 
   const photoBy = photographer ? `Photo by ${photographer} on JetPhotos:` : `Photo on JetPhotos:`;
   const link = img?.Link ? String(img.Link).trim() : '';
