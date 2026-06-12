@@ -194,6 +194,7 @@ async function runOnce() {
       break;
     }
     console.log(`No usable image for "${keyword}", trying a different combination.`);
+    if (attempt < maxAttempts - 1) await sleep(3000);
   }
 
   if (!chosenImage) {

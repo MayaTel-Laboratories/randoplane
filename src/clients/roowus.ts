@@ -190,9 +190,9 @@ export type SearchParams = {
 };
 
 export async function fetchForKeyword(params: SearchParams, photos = DEFAULT_PHOTOS, page?: number, sortOrder?: number) {
-  const resolvedPage = page ?? randomPage(10);
+  const resolvedPage = page ?? randomPage(3);
   const resolvedSort = sortOrder ?? randomSortOrder();
-  const cacheId = JSON.stringify(params) + `:p:${photos}:pg:${resolvedPage}:s:${resolvedSort}`;
+  const cacheId = JSON.stringify(params) + `:p:${photos}`;
   const key = `kw:${cacheId}`;
   const fromCache = readCache(key);
   if (fromCache) return fromCache;
