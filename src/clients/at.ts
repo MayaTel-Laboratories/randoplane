@@ -1,5 +1,5 @@
 import * as fs from 'fs';
-import { BskyAgent, AppBskyEmbedImages } from '@atproto/api';
+import { BskyAgent } from '@atproto/api';
 
 type PostOptions = {
   path: string;
@@ -17,10 +17,8 @@ async function ensureAgent() {
     try {
       const sess = JSON.parse(process.env.BSKY_SESSION);
       if (sess?.handle && sess?.refreshJwt && sess?.accessJwt) {
-        // restore session if available
-        // @ts-ignore - restoreSession may exist on agent
-        await (agent as any).resumeSession(sess);
-        return agent;
+        // resumeSession exists on some agent builds; use any to avoid type errors
+        try { await (agent as any).resumeSession(sess); return agent; } catch {}
       }
     } catch {}
   }
@@ -36,45 +34,62 @@ export async function postImage(opts: PostOptions) {
   const imageBuffer = fs.readFileSync(opts.path);
   const contentType = guessContentType(opts.path);
 
-  const uploadRes = await agent.uploadBlob(imageBuffer, { encoding: 'image/*', headers: { 'content-type': contentType } }).catch(async (e) => {
-    // try without extra headers if API rejects the header shape
-    return agent.uploadBlob(imageBuffer);
+  // Upload blob (use any because versions differ)
+  const uploadRes: any = await agent.uploadBlob(imageBuffer, { encoding: 'image/*', headers: { 'content-type': contentType } }).catch(async (e) => {
+    // fallback to a call without extra headers if the first form is rejected
+    try { return await agent.uploadBlob(imageBuffer); } catch (err) { throw err; }
   });
 
-  const cid = (uploadRes as any)?.blob?.ref || (uploadRes as any)?.data?.cid || (uploadRes as any)?.cid || (uploadRes as any)?.blob?.cid;
+  // Resolve CID from a few common shapes
+  let cid: string | undefined = undefined;
+  if (!cid) cid = uploadRes?.cid;
+  if (!cid) cid = uploadRes?.data?.cid;
+  if (!cid) cid = uploadRes?.blob?.ref;
+  if (!cid) cid = uploadRes?.data?.blob?.ref;
+  if (!cid) cid = uploadRes?.blob?.cid;
+  if (!cid) cid = uploadRes?.data?.blob?.cid;
   if (!cid) {
-    // some versions return the blob cid differently
-    const maybe = (uploadRes as any);
+    // last resort: scan nested objects
+    const maybe = uploadRes;
     if (maybe && typeof maybe === 'object') {
-      const keys = Object.keys(maybe);
-      const v = keys.map(k => (maybe as any)[k]).find((x: any) => x && x.cid);
-      if (v) {
-        // @ts-ignore
-        cid = v.cid;
-      }
+      const found = (function findCid(o: any): string | undefined {
+        if (!o || typeof o !== 'object') return undefined;
+        if (typeof o.cid === 'string') return o.cid;
+        if (typeof o.ref === 'string') return o.ref;
+        for (const k of Object.keys(o)) {
+          try {
+            const v = findCid(o[k]);
+            if (v) return v;
+          } catch {}
+        }
+        return undefined;
+      })(maybe);
+      cid = found;
     }
   }
+
   if (!cid) {
     throw new Error('Failed to upload image to Bluesky (no CID returned).');
   }
 
-  const imageEmbed: AppBskyEmbedImages.Record = {
+  // Build image embed object (use any to avoid type mismatches)
+  const imageEmbed: any = {
     $type: 'app.bsky.embed.images',
     images: [
       {
         alt: opts.altText || '',
         image: { cid },
-      } as any,
+      },
     ],
-  } as any;
+  };
 
   const now = new Date().toISOString();
 
-  // Create the post
+  // Post the status with image embed, sending text exactly as provided
   await agent.post({
     text: opts.text,
     createdAt: now,
-    embed: imageEmbed as any,
+    embed: imageEmbed,
   });
 }
 

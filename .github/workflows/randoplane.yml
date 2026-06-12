@@ -9,7 +9,7 @@ on:
         default: ''
 
 jobs:
-  post-random-plane:
+  randoplane:
     runs-on: self-hosted
     permissions:
       contents: write
