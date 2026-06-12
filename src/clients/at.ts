@@ -11,23 +11,17 @@ type PostOptions = {
 const SERVICE = process.env.BSKY_SERVICE || 'https://bsky.social';
 const IDENTIFIER = process.env.BSKY_IDENTIFIER || '';
 const PASSWORD = process.env.BSKY_PASSWORD || '';
-
-let sizeOf: ((p: any) => { width?: number; height?: number } | undefined) | null = null;
+let sizeOf: ((p: string) => { width?: number; height?: number } | undefined) | null = null;
 try {
-  const req: any = eval('require');
-  const _sizeOf = req('image-size');
-  sizeOf = (p: any) => {
-    try {
-      return _sizeOf(p);
-    } catch {
-      return undefined;
-    }
+  const _sizeOf = (eval('require') as NodeRequire)('image-size');
+  sizeOf = (p: string) => {
+    try { return _sizeOf(p); } catch { return undefined; }
   };
 } catch {
   sizeOf = null;
 }
 
-async function ensureAgent() {
+async function ensureAgent(): Promise<BskyAgent> {
   const agent = new BskyAgent({ service: SERVICE });
   if (process.env.BSKY_SESSION) {
     try {
@@ -38,32 +32,48 @@ async function ensureAgent() {
     } catch {}
   }
   if (!IDENTIFIER || !PASSWORD) {
-    throw new Error('Missing BSKY_IDENTIFIER or BSKY_PASSWORD environment variables for Bluesky posting.');
+    throw new Error('Missing BSKY_IDENTIFIER or BSKY_PASSWORD environment variables.');
   }
   await agent.login({ identifier: IDENTIFIER, password: PASSWORD });
   return agent;
 }
 
-function guessContentType(filename: string) {
+function guessContentType(filename: string): string {
   const l = filename.toLowerCase();
-  if (l.endsWith('.png')) return 'image/png';
+  if (l.endsWith('.png'))  return 'image/png';
   if (l.endsWith('.webp')) return 'image/webp';
-  if (l.endsWith('.gif')) return 'image/gif';
+  if (l.endsWith('.gif'))  return 'image/gif';
   return 'image/jpeg';
 }
 
-function truncate(o: any, n = 2000) {
-  try { return JSON.stringify(o, null, 2).slice(0, n); } catch { return String(o).slice(0, n); }
+function truncatePostText(text: string, link?: string): string {
+  const LIMIT = 295;
+  if (Buffer.byteLength(text, 'utf8') <= LIMIT) return text;
+  if (link && text.includes(link)) {
+    const withoutLink = text.slice(0, text.lastIndexOf(link)).trimEnd();
+    if (Buffer.byteLength(withoutLink, 'utf8') <= LIMIT) return withoutLink;
+    text = withoutLink;
+  }
+
+  const buf = Buffer.from(text, 'utf8').slice(0, LIMIT - 1);
+  return buf.toString('utf8').replace(/\uFFFD$/, '') + '…';
 }
 
-export async function postImage(opts: PostOptions) {
+export async function postImage(opts: PostOptions): Promise<void> {
   const agent = await ensureAgent();
+
   const imageBuffer = fs.readFileSync(opts.path);
   const contentType = guessContentType(opts.path);
-  const size = imageBuffer.byteLength;
+  let uploadRes: Awaited<ReturnType<typeof agent.uploadBlob>>;
+  try {
+    uploadRes = await agent.uploadBlob(imageBuffer, { encoding: contentType });
+  } catch {
+    uploadRes = await agent.uploadBlob(imageBuffer);
+  }
 
-  let width: number | undefined = undefined;
-  let height: number | undefined = undefined;
+  const blobRef = uploadRes.data.blob;
+  let width: number | undefined;
+  let height: number | undefined;
   try {
     if (sizeOf) {
       const dims = sizeOf(opts.path);
@@ -74,99 +84,40 @@ export async function postImage(opts: PostOptions) {
     }
   } catch {}
 
-  let uploadRes: any;
-  try {
-    uploadRes = await agent.uploadBlob(imageBuffer, { encoding: contentType });
-  } catch (e1) {
-    try {
-      uploadRes = await agent.uploadBlob(imageBuffer);
-    } catch (e2) {
-      console.error('Upload failed (both attempts):', e1, e2);
-      throw e2;
-    }
-  }
-
-  let blobObj: any = undefined;
-  if (uploadRes?.data?.blob) blobObj = uploadRes.data.blob;
-  else if (uploadRes?.blob) blobObj = uploadRes.blob;
-  else {
-    let cid: string | undefined = undefined;
-    if (uploadRes?.data?.cid) cid = uploadRes.data.cid;
-    else if (uploadRes?.cid) cid = uploadRes.cid;
-    else if (uploadRes?.blob?.cid) cid = uploadRes.blob.cid;
-    else if (uploadRes?.data?.blob?.cid) cid = uploadRes.data.blob.cid;
-    if (cid) blobObj = { $type: 'blob', ref: { $link: cid }, mimeType: contentType, size };
-  }
-
-  if (!blobObj) {
-    const findBlob = (o: any): any => {
-      if (!o || typeof o !== 'object') return undefined;
-      if (o.$type && o.ref && o.ref.$link) return o;
-      if (o.ref && o.ref.$link) return o;
-      for (const k of Object.keys(o)) {
-        try {
-          const v = findBlob(o[k]);
-          if (v) return v;
-        } catch {}
-      }
-      return undefined;
-    };
-    blobObj = findBlob(uploadRes);
-  }
-
-  if (!blobObj) {
-    console.error('uploadRes (truncated):', truncate(uploadRes));
-    throw new Error('Failed to resolve uploaded blob object (no blob found in upload response).');
-  }
-
-  if (typeof blobObj.ref === 'string') blobObj = { $type: 'blob', ref: { $link: blobObj.ref }, mimeType: contentType, size };
-
-  const imageEntry: any = {
+  const imageEntry: Record<string, unknown> = {
     alt: opts.altText || '',
-    image: blobObj,
+    image: blobRef,
   };
   if (width && height) {
     imageEntry.aspectRatio = { width, height };
   }
 
-  const imageEmbed: any = {
-    $type: 'app.bsky.embed.images',
-    images: [imageEntry],
-  };
+  const postText = truncatePostText(opts.text, opts.link);
 
-  const now = new Date().toISOString();
-  const record: any = {
+  const record: Record<string, unknown> = {
     $type: 'app.bsky.feed.post',
-    text: opts.text,
-    createdAt: now,
-    embed: imageEmbed,
+    text: postText,
+    createdAt: new Date().toISOString(),
+    embed: {
+      $type: 'app.bsky.embed.images',
+      images: [imageEntry],
+    },
   };
 
   if (opts.link && typeof opts.link === 'string' && opts.link.trim().length > 0) {
-    try {
-      const url = String(opts.link).trim();
-      const textBuf = Buffer.from(record.text || '', 'utf8');
-      const urlBuf = Buffer.from(url, 'utf8');
-      const idx = textBuf.indexOf(urlBuf);
-      if (idx !== -1) {
-        const start = idx;
-        const end = idx + urlBuf.length;
-        record.facets = [
-          {
-            index: { byteStart: start, byteEnd: end },
-            features: [
-              { $type: 'app.bsky.richtext.facet#link', uri: url }
-            ]
-          }
-        ];
-      }
-    } catch {}
+    const url = opts.link.trim();
+    const textBuf = Buffer.from(postText, 'utf8');
+    const urlBuf  = Buffer.from(url, 'utf8');
+    const idx = textBuf.indexOf(urlBuf);
+    if (idx !== -1) {
+      record.facets = [
+        {
+          index: { byteStart: idx, byteEnd: idx + urlBuf.length },
+          features: [{ $type: 'app.bsky.richtext.facet#link', uri: url }],
+        },
+      ];
+    }
   }
-
-  try {
-    console.log('Bluesky uploadRes (truncated):', truncate(uploadRes));
-    console.log('Bluesky post payload (truncated):', truncate(record));
-  } catch {}
 
   await agent.post(record);
 }
