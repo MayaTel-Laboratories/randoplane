@@ -2,6 +2,8 @@ import * as fs from 'fs';
 import { BskyAgent } from '@atproto/api';
 import * as sizeOf from 'buffer-image-size';
 
+const BSKY_MAX_BYTES = 1900000;
+
 type PostOptions = {
   path: string;
   text: string;
@@ -38,6 +40,46 @@ function guessContentType(filename: string): string {
   return 'image/jpeg';
 }
 
+async function compressToLimit(buffer: Buffer, contentType: string): Promise<{ buffer: Buffer; contentType: string }> {
+  if (buffer.byteLength <= BSKY_MAX_BYTES) return { buffer, contentType };
+
+  let sharp: any;
+  try {
+    sharp = (eval('require') as NodeRequire)('sharp');
+  } catch {
+    throw new Error(`Image is ${buffer.byteLength} bytes, exceeds Bluesky's 2MB limit, and sharp is not available to compress it.`);
+  }
+
+  console.log(`Image is ${buffer.byteLength} bytes, compressing to fit under ${BSKY_MAX_BYTES} bytes...`);
+
+  let quality = 82;
+  let result = buffer;
+  let resultType = 'image/jpeg';
+
+  while (quality >= 40) {
+    const compressed = await sharp(buffer).jpeg({ quality }).toBuffer();
+    if (compressed.byteLength <= BSKY_MAX_BYTES) {
+      result = compressed;
+      console.log(`Compressed to ${compressed.byteLength} bytes at quality ${quality}.`);
+      break;
+    }
+    quality -= 10;
+  }
+
+  if (result.byteLength > BSKY_MAX_BYTES) {
+    const compressed = await sharp(buffer).resize({ width: 2048 }).jpeg({ quality: 75 }).toBuffer();
+    if (compressed.byteLength <= BSKY_MAX_BYTES) {
+      result = compressed;
+      resultType = 'image/jpeg';
+      console.log(`Compressed with resize to ${compressed.byteLength} bytes.`);
+    } else {
+      throw new Error(`Could not compress image to under ${BSKY_MAX_BYTES} bytes (got ${compressed.byteLength}).`);
+    }
+  }
+
+  return { buffer: result, contentType: resultType };
+}
+
 function truncatePostText(text: string, link?: string): string {
   const LIMIT = 295;
   if (Buffer.byteLength(text, 'utf8') <= LIMIT) return text;
@@ -55,9 +97,13 @@ function truncatePostText(text: string, link?: string): string {
 export async function postImage(opts: PostOptions): Promise<void> {
   const agent = await ensureAgent();
 
-  const imageBuffer = fs.readFileSync(opts.path);
-  const contentType = guessContentType(opts.path);
+  let imageBuffer = fs.readFileSync(opts.path);
+  let contentType = guessContentType(opts.path);
   const dimensions = sizeOf(imageBuffer);
+
+  const compressed = await compressToLimit(imageBuffer, contentType);
+  imageBuffer = compressed.buffer;
+  contentType = compressed.contentType;
 
   let uploadRes: Awaited<ReturnType<typeof agent.uploadBlob>>;
   try {
