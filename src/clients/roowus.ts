@@ -195,7 +195,6 @@ export async function fetchForReg(reg: string, photos = DEFAULT_PHOTOS) {
   baseUrl.searchParams.set('keywords-type', 'registration');
   baseUrl.searchParams.set('keywords-contain', '0');
 
-  // try a random page to increase randomness
   const initial = await fetchJson(baseUrl.toString());
   let pages = initial?.pages ?? initial?.totalPages ?? 1;
   if (!pages || pages < 1) pages = 1;
@@ -227,15 +226,9 @@ export async function fetchForKeyword(keyword: string, photos = DEFAULT_PHOTOS) 
 
   const photosArr = Array.isArray(json.photos) ? json.photos : (json?.data ?? []);
   const normalized = photosArr.map(normalizePhoto);
-
-  // Deduplicate against posted history: filter out recently posted photoIds
   const posted = new Set(readPostedHistory());
   const filtered = normalized.filter(p => !(p.photoId && posted.has(p.photoId)));
-
-  // If filtering removed everything, fall back to full normalized set
   const candidatePool = filtered.length > 0 ? filtered : normalized;
-
-  // choose random subset to return up to "photos"
   const selected: any[] = [];
   const pool = candidatePool.slice();
   while (selected.length < photos && pool.length > 0) {
@@ -304,7 +297,6 @@ export function composeCaption(regOrKeyword: string, img: RoowusImage) {
   return { text: captionText, link };
 }
 
-// When a post is successfully posted, call this to record its photoId to history:
 export function recordPostedPhoto(photoId?: string) {
   if (!photoId) return;
   addToPostedHistory(photoId);

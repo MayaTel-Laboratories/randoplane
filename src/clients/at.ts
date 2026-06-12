@@ -1,17 +1,31 @@
 import * as fs from 'fs';
 import { BskyAgent } from '@atproto/api';
-import sizeOf from 'image-size';
 
 type PostOptions = {
   path: string;
   text: string;
   altText?: string;
-  link?: string; // optional JetPhotos link to facet/embed
+  link?: string;
 };
 
 const SERVICE = process.env.BSKY_SERVICE || 'https://bsky.social';
 const IDENTIFIER = process.env.BSKY_IDENTIFIER || '';
 const PASSWORD = process.env.BSKY_PASSWORD || '';
+
+let sizeOf: ((p: any) => { width?: number; height?: number } | undefined) | null = null;
+try {
+  const req: any = eval('require');
+  const _sizeOf = req('image-size');
+  sizeOf = (p: any) => {
+    try {
+      return _sizeOf(p);
+    } catch {
+      return undefined;
+    }
+  };
+} catch {
+  sizeOf = null;
+}
 
 async function ensureAgent() {
   const agent = new BskyAgent({ service: SERVICE });
@@ -48,18 +62,17 @@ export async function postImage(opts: PostOptions) {
   const contentType = guessContentType(opts.path);
   const size = imageBuffer.byteLength;
 
-  // compute width/height using image-size
   let width: number | undefined = undefined;
   let height: number | undefined = undefined;
   try {
-    const dims = sizeOf(opts.path);
-    if (dims && typeof dims.width === 'number' && typeof dims.height === 'number') {
-      width = dims.width;
-      height = dims.height;
+    if (sizeOf) {
+      const dims = sizeOf(opts.path);
+      if (dims && typeof dims.width === 'number' && typeof dims.height === 'number') {
+        width = dims.width;
+        height = dims.height;
+      }
     }
-  } catch (e) {
-    // fallback: leave aspectRatio undefined
-  }
+  } catch {}
 
   let uploadRes: any;
   try {
@@ -121,7 +134,6 @@ export async function postImage(opts: PostOptions) {
     images: [imageEntry],
   };
 
-  // Build record payload: include facets if the user supplied a link so the link becomes a clickable facet
   const now = new Date().toISOString();
   const record: any = {
     $type: 'app.bsky.feed.post',
@@ -130,7 +142,6 @@ export async function postImage(opts: PostOptions) {
     embed: imageEmbed,
   };
 
-  // If a link was passed, try to locate its byte offsets (UTF-8) and add a facets link feature.
   if (opts.link && typeof opts.link === 'string' && opts.link.trim().length > 0) {
     try {
       const url = String(opts.link).trim();
@@ -149,9 +160,7 @@ export async function postImage(opts: PostOptions) {
           }
         ];
       }
-    } catch (e) {
-      // no-op - facets are optional
-    }
+    } catch {}
   }
 
   try {
