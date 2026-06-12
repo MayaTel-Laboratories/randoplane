@@ -209,17 +209,21 @@ export async function downloadImageToTemp(url: string, hint = 'image'): Promise<
 export function composeCaption(regOrKeyword: string, img: RoowusImage) {
   const aircraft = (img?.Aircraft || '').toString().trim();
   const airline = (img?.Airline || '').toString().trim();
-  const photographer = (img?.Photographer || '').toString().trim();
+  let location = (img?.Location || '').toString().trim();
+  if (location) {
+    if (location.includes(' - ')) location = location.split(' - ')[0].trim();
+    location = location.replace(/\s*\(.*\)$/, '').trim();
+  }
   const when = (img?.DateTaken || '').toString().trim();
-  const location = (img?.Location || '').toString().trim();
+  const photographer = (img?.Photographer || '').toString().trim();
   const parts: string[] = [];
   if (aircraft) parts.push(aircraft);
   if (airline) parts.push(`operated by ${airline}`);
   if (location) parts.push(`at ${location}`);
   if (when) parts.push(`on ${when}`);
   const main = parts.join(', ');
-  const photoBy = photographer ? `Photo by ${photographer} on JetPhotos.` : `Photo on JetPhotos.`;
-  const link = img?.Link ? `${img.Link}` : '';
-  const captionText = link ? `${main}. ${photoBy}\n${link}` : `${main}. ${photoBy}`;
+  const photoBy = photographer ? `Photo by ${photographer} on JetPhotos:` : `Photo on JetPhotos:`;
+  const link = img?.Link ? String(img.Link).trim() : '';
+  const captionText = link ? `${main}.\n\n${photoBy}\n${link}` : `${main}. ${photoBy}`;
   return { text: captionText };
 }
