@@ -4,11 +4,8 @@ import * as os from 'os';
 import { pipeline } from 'stream';
 import { promisify } from 'util';
 const pLimit = require('p-limit');
-
 const streamPipeline = promisify(pipeline);
-
 export type RoowusImage = {
-  photoId?: string;
   Image?: string;
   Thumbnail?: string;
   Photographer?: string;
@@ -17,19 +14,16 @@ export type RoowusImage = {
   Airline?: string;
   DateTaken?: string;
   Location?: string;
+  photoId?: string;
+  [k: string]: any;
 };
-
-const BASE = ((process.env.ROOWUS_BASE || 'https://randoplane-jetphotos-api.kingforpa.workers.dev').toString().trim()).replace(/\/+$/, '');
+const BASE = process.env.ROOWUS_BASE || 'https://randoplane-jetphotos-api.kingforpa.workers.dev';
 const DEFAULT_PHOTOS = Number(process.env.JP_PHOTOS || 5);
 const CONCURRENCY = Number(process.env.JP_CONCURRENCY || 6);
 const CACHE_TTL_SECONDS = Number(process.env.ROOWUS_CACHE_TTL || 3600);
 const CACHE_DIR = process.env.ROOWUS_CACHE_DIR || path.resolve(process.cwd(), '.roowus_cache');
-const POSTED_HISTORY_FILE = path.join(CACHE_DIR, 'posted_history.json');
-const POSTED_HISTORY_MAX = Number(process.env.ROOWUS_POSTED_HISTORY_MAX || 50);
-const MAX_RANDOM_PAGE = Number(process.env.ROOWUS_MAX_RANDOM_PAGE || 20);
-
+const POSTED_HISTORY = path.join(CACHE_DIR, 'posted_photos.json');
 const limit = pLimit(CONCURRENCY);
-
 function ensureCacheDir() {
   try { fs.mkdirSync(CACHE_DIR, { recursive: true }); } catch {}
 }
@@ -57,76 +51,43 @@ function writeCache(key: string, obj: any) {
     fs.writeFileSync(cacheKey(key), JSON.stringify(obj), 'utf8');
   } catch {}
 }
-
-function readPostedHistory(): string[] {
-  try {
-    ensureCacheDir();
-    if (!fs.existsSync(POSTED_HISTORY_FILE)) return [];
-    const raw = fs.readFileSync(POSTED_HISTORY_FILE, 'utf8');
-    return JSON.parse(raw || '[]');
-  } catch {
-    return [];
+function shuffle<T>(arr: T[]) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
   }
+  return arr;
 }
-function writePostedHistory(list: string[]) {
-  try {
-    ensureCacheDir();
-    fs.writeFileSync(POSTED_HISTORY_FILE, JSON.stringify(list.slice(-POSTED_HISTORY_MAX)), 'utf8');
-  } catch {}
-}
-function addToPostedHistory(id: string) {
-  if (!id) return;
-  const hist = readPostedHistory();
-  if (hist[hist.length - 1] === id) return;
-  hist.push(id);
-  writePostedHistory(hist);
-}
-
 async function fetchJson(url: string, opts: RequestInit = {}) {
-  const apiKey = process.env.ROOWUS_API_KEY;
-  const baseHeaders = {
-    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-    'Accept': 'application/json, text/plain, */*',
-    'Accept-Language': 'en-US,en;q=0.9',
-    'Referer': 'https://www.jetphotos.com/',
-    ...(opts.headers || {}),
-  };
-  if (apiKey) baseHeaders['x-api-key'] = apiKey;
-  const maxAttempts = Number(process.env.ROOWUS_FETCH_ATTEMPTS || 6);
-  const baseDelayMs = Number(process.env.ROOWUS_FETCH_BACKOFF_MS || 1000);
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    let res: Response | null = null;
-    try {
-      res = await fetch(url, { ...opts, headers: baseHeaders });
-    } catch (err) {
-      if (attempt === maxAttempts) throw new Error(`Roowus fetch failed: ${err && (err as any).message ? (err as any).message : err}`);
-      const jitter = Math.floor(Math.random() * 300);
-      await new Promise((r) => setTimeout(r, baseDelayMs * attempt + jitter));
-      continue;
-    }
-    if (res.ok) {
-      try { return await res.json(); } catch (e) { throw new Error(`Roowus JSON parse error: ${e && (e as any).message ? (e as any).message : e}`); }
-    }
-    const retryAfter = res.headers.get('retry-after');
-    const status = res.status;
-    const text = await res.text().catch(() => '');
-    if ((status === 429 || status === 403) && attempt < maxAttempts) {
-      let waitMs = baseDelayMs * Math.pow(2, attempt - 1);
-      if (retryAfter) {
-        const ra = parseInt(retryAfter, 10);
-        if (!Number.isNaN(ra)) waitMs = Math.max(waitMs, ra * 1000);
-      }
-      const jitter = Math.floor(Math.random() * 500);
-      await new Promise((r) => setTimeout(r, waitMs + jitter));
-      continue;
-    }
-    const err: any = new Error(`Roowus API: ${status} ${res.statusText}${text ? ` - ${text.slice(0,200)}` : ''}`);
-    err.status = status;
+  const baseHeaders = { 'User-Agent': 'randoplane/roowus-adapter/1.0', ...(opts.headers || {}) };
+  const res1 = await fetch(url, { ...opts, headers: baseHeaders });
+  if (res1.ok) return res1.json();
+  const text1 = await res1.text().catch(() => '');
+  if (res1.status !== 403) {
+    const err: any = new Error(`Roowus API: ${res1.status} ${res1.statusText}${text1 ? ` - ${text1.slice(0,200)}` : ''}`);
+    err.status = res1.status;
     throw err;
   }
-  throw new Error('Roowus fetch: exhausted retries');
+  try {
+    const browserHeaders = {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Referer': 'https://www.jetphotos.com/',
+      ...baseHeaders,
+    };
+    const res2 = await fetch(url, { ...opts, headers: browserHeaders });
+    if (res2.ok) return res2.json();
+    const text2 = await res2.text().catch(() => '');
+    const err2: any = new Error(`Roowus API (retry): ${res2.status} ${res2.statusText}${text2 ? ` - ${text2.slice(0,200)}` : ''}`);
+    err2.status = res2.status;
+    throw err2;
+  } catch (e) {
+    const err: any = new Error(`Roowus API: initial 403, retry failed: ${e && (e as any).message ? (e as any).message : e}`);
+    err.status = 403;
+    throw err;
+  }
 }
-
 function makeAbsoluteJetphotosLink(link?: string) {
   if (!link) return undefined;
   const s = link.toString().trim();
@@ -137,7 +98,6 @@ function makeAbsoluteJetphotosLink(link?: string) {
   if (s.startsWith('www.')) return 'https://' + s;
   return s;
 }
-
 function normalizePhoto(p: any): RoowusImage {
   const get = (v: any) => {
     if (v === null || v === undefined) return undefined;
@@ -157,19 +117,26 @@ function normalizePhoto(p: any): RoowusImage {
     p.link ??
     p.pageUrlFull ??
     p.photo_page_url_full;
+  const img = get(p.imageUrl ?? p.image ?? p.fullUrl ?? (p.urls && p.urls.full));
+  const thumb = get(p.thumbnailUrl ?? p.thumb ?? (p.urls && p.urls.thumb) ?? (p.urls && p.urls.small));
+  const photographer = get(p.photographer ?? p.photographerName ?? p.author);
+  const aircraft = get(p.aircraftType ?? p.model ?? p.aircraft);
+  const airline = get(p.airline ?? p.airlineName);
+  const when = get(p.year ?? p.taken_at ?? p.photoDate ?? p.uploadedDate);
+  const location = get(p.location ?? p.airport ?? p.locationName ?? p.location_full);
+  const photoId = get(p.photoId ?? p.id ?? p.photo_id);
   return {
-    photoId: get(p.photoId ?? p.photo_id ?? p.id),
-    Image: get(p.imageUrl ?? p.image ?? p.fullUrl ?? p.urls?.full),
-    Thumbnail: get(p.thumbnailUrl ?? p.thumb ?? p.urls?.thumb ?? p.urls?.small),
-    Photographer: get(p.photographer ?? p.photographerName ?? p.author),
-    Link: makeAbsoluteJetphotosLink(get(linkCandidate)),
-    Aircraft: get(p.aircraftType ?? p.model ?? p.aircraft),
-    Airline: get(p.airline ?? p.airlineName),
-    DateTaken: get(p.year ?? p.taken_at ?? p.photoDate ?? p.uploadedDate),
-    Location: get(p.location ?? p.airport ?? p.locationName ?? p.location_full),
+    photoId,
+    Image: img,
+    Thumbnail: thumb,
+    Photographer: photographer,
+    Link: makeAbsoluteJetphotosLink(get(linkCandidate)) || (photoId ? `https://www.jetphotos.com/photo/${photoId}` : undefined),
+    Aircraft: aircraft,
+    Airline: airline,
+    DateTaken: when,
+    Location: location,
   };
 }
-
 async function retry<T>(fn: () => Promise<T>, attempts = 3, backoffMs = 300): Promise<T> {
   let last: any;
   for (let i = 0; i < attempts; i++) {
@@ -177,87 +144,121 @@ async function retry<T>(fn: () => Promise<T>, attempts = 3, backoffMs = 300): Pr
   }
   throw last;
 }
-
-async function fetchPageForQuery(urlBase: URL, page: number) {
-  const u = new URL(urlBase.toString());
-  u.searchParams.set('page', String(page));
-  return await fetchJson(u.toString());
+async function fetchPhotoDetailsById(photoId: string) {
+  const urls = [
+    `${BASE}/photo/${encodeURIComponent(photoId)}`,
+    `${BASE}/?photoId=${encodeURIComponent(photoId)}`,
+    `${BASE}/photo?id=${encodeURIComponent(photoId)}`
+  ];
+  for (const u of urls) {
+    try {
+      const j = await retry(() => fetchJson(u));
+      if (j && (j.photo || j.photos || j.data)) {
+        const cand = j.photo ?? (Array.isArray(j.photos) ? j.photos[0] : j.photos) ?? j.data ?? j;
+        if (cand) return cand;
+      }
+      if (j && typeof j === 'object' && Object.keys(j).length > 0 && (j.thumbnailUrl || j.imageUrl || j.photoPageUrl)) {
+        return j;
+      }
+    } catch {}
+  }
+  return null;
 }
-
 export async function fetchForReg(reg: string, photos = DEFAULT_PHOTOS) {
   const key = `reg:${reg}:p:${photos}`;
   const fromCache = readCache(key);
   if (fromCache) return fromCache;
-
-  const baseUrl = new URL(BASE + '/');
-  baseUrl.searchParams.set('sort-order', '1');
-  baseUrl.searchParams.set('keywords', reg);
-  baseUrl.searchParams.set('keywords-type', 'registration');
-  baseUrl.searchParams.set('keywords-contain', '0');
-
-  const initial = await fetchJson(baseUrl.toString());
-  let pages = initial?.pages ?? initial?.totalPages ?? 1;
-  if (!pages || pages < 1) pages = 1;
-  const randomPage = Math.max(1, Math.min(pages, 1 + Math.floor(Math.random() * Math.min(pages, MAX_RANDOM_PAGE))));
-  const json = randomPage === 1 ? initial : await fetchPageForQuery(baseUrl, randomPage);
-
+  const url = new URL(BASE + '/');
+  url.searchParams.set('page', '1');
+  url.searchParams.set('sort-order', '1');
+  url.searchParams.set('keywords', reg);
+  url.searchParams.set('keywords-type', 'registration');
+  url.searchParams.set('keywords-contain', '0');
+  const json = await limit(() => retry(() => fetchJson(url.toString())));
   const photosArr = Array.isArray(json.photos) ? json.photos : (json?.data ?? []);
   const result = { Reg: reg, Images: photosArr.slice(0, photos).map(normalizePhoto), raw: json };
   writeCache(key, result);
   return result;
 }
-
 export async function fetchForKeyword(keyword: string, photos = DEFAULT_PHOTOS) {
   const key = `kw:${keyword}:p:${photos}`;
   const fromCache = readCache(key);
   if (fromCache) return fromCache;
-
-  const baseUrl = new URL(BASE + '/');
-  baseUrl.searchParams.set('sort-order', '1');
-  baseUrl.searchParams.set('keywords', keyword);
-  baseUrl.searchParams.set('keywords-type', 'aircraft');
-  baseUrl.searchParams.set('keywords-contain', '3');
-
-  const initial = await fetchJson(baseUrl.toString());
-  let pages = initial?.pages ?? initial?.totalPages ?? 1;
-  if (!pages || pages < 1) pages = 1;
-  const randomPage = Math.max(1, Math.min(pages, 1 + Math.floor(Math.random() * Math.min(pages, MAX_RANDOM_PAGE))));
-  const json = randomPage === 1 ? initial : await fetchPageForQuery(baseUrl, randomPage);
-
+  const url = new URL(BASE + '/');
+  url.searchParams.set('page', '1');
+  url.searchParams.set('sort-order', '1');
+  url.searchParams.set('keywords', keyword);
+  url.searchParams.set('keywords-type', 'aircraft');
+  url.searchParams.set('keywords-contain', '3');
+  const json = await limit(() => retry(() => fetchJson(url.toString())));
   const photosArr = Array.isArray(json.photos) ? json.photos : (json?.data ?? []);
-  const normalized = photosArr.map(normalizePhoto);
-  const posted = new Set(readPostedHistory());
-  const filtered = normalized.filter(p => !(p.photoId && posted.has(p.photoId)));
-  const candidatePool = filtered.length > 0 ? filtered : normalized;
-  const selected: any[] = [];
-  const pool = candidatePool.slice();
-  while (selected.length < photos && pool.length > 0) {
-    const idx = Math.floor(Math.random() * pool.length);
-    selected.push(pool.splice(idx, 1)[0]);
+  let imgs = photosArr.slice(0, photos).map(normalizePhoto);
+  if (imgs.length > 0 && imgs.every(i => !i.Image && !i.Thumbnail && (!i.Link || i.Link.includes('/photo/')))) {
+    const total = Number(json.total ?? json.total_photos ?? photosArr.length) || photosArr.length;
+    const maxPages = Math.max(1, Math.min(20, Math.ceil(total / Math.max(1, photos))));
+    const randomPage = 1 + Math.floor(Math.random() * maxPages);
+    try {
+      const url2 = new URL(BASE + '/');
+      url2.searchParams.set('page', String(randomPage));
+      url2.searchParams.set('sort-order', '1');
+      url2.searchParams.set('keywords', keyword);
+      url2.searchParams.set('keywords-type', 'aircraft');
+      url2.searchParams.set('keywords-contain', '3');
+      const j2 = await limit(() => retry(() => fetchJson(url2.toString())));
+      const arr2 = Array.isArray(j2.photos) ? j2.photos : (j2?.data ?? []);
+      imgs = arr2.slice(0, photos * 2).map(normalizePhoto);
+    } catch {}
   }
-
-  const result = { Reg: keyword, Images: selected.map(normalizePhoto), raw: json };
+  imgs = shuffle(imgs);
+  const needEnrich = imgs.filter(i => (!i.Image && !i.Thumbnail) && i.photoId).slice(0, photos);
+  if (needEnrich.length > 0) {
+    await Promise.all(needEnrich.map((entry: any) => limit(async () => {
+      try {
+        const det = await fetchPhotoDetailsById(String(entry.photoId));
+        if (det) {
+          const enriched = normalizePhoto(det);
+          Object.assign(entry, enriched);
+        }
+      } catch {}
+    })));
+  }
+  const result = { Reg: keyword, Images: imgs.slice(0, photos).map((x: any) => x), raw: json };
   writeCache(key, result);
   return result;
 }
-
 export function chooseUsableImage(res: { Images?: RoowusImage[] } | null) {
   if (!res || !Array.isArray(res.Images) || res.Images.length === 0) return null;
+  const posted = (() => {
+    try {
+      if (!fs.existsSync(POSTED_HISTORY)) return new Set<string>();
+      const data = JSON.parse(fs.readFileSync(POSTED_HISTORY, 'utf8') || '[]');
+      return new Set<string>(Array.isArray(data) ? data.map(String) : []);
+    } catch { return new Set<string>(); }
+  })();
   const withAttr = res.Images.filter(i => {
     if (!i) return false;
     const hasImage = !!((i.Image && String(i.Image).trim().length > 0) || (i.Thumbnail && String(i.Thumbnail).trim().length > 0));
     const hasPhot = !!(i.Photographer && String(i.Photographer).trim().length > 0);
     const hasLink = !!(i.Link && String(i.Link).trim().length > 0);
-    return hasImage && hasPhot && hasLink;
+    const notPosted = !(i.photoId && posted.has(String(i.photoId)));
+    return hasImage && hasPhot && hasLink && notPosted;
   });
-  if (withAttr.length === 0) return null;
-  return withAttr[Math.floor(Math.random() * withAttr.length)];
+  if (withAttr.length > 0) return withAttr[Math.floor(Math.random() * withAttr.length)];
+  const fallback = res.Images.filter(i => {
+    if (!i) return false;
+    const hasImage = !!((i.Image && String(i.Image).trim().length > 0) || (i.Thumbnail && String(i.Thumbnail).trim().length > 0));
+    const hasLink = !!(i.Link && String(i.Link).trim().length > 0);
+    const notPosted = !(i.photoId && posted.has(String(i.photoId)));
+    return hasImage && hasLink && notPosted;
+  });
+  if (fallback.length > 0) return fallback[Math.floor(Math.random() * fallback.length)];
+  const anyUnposted = res.Images.filter(i => i && !(i.photoId && posted.has(String(i.photoId))));
+  if (anyUnposted.length > 0) return anyUnposted[Math.floor(Math.random() * anyUnposted.length)];
+  return res.Images[Math.floor(Math.random() * res.Images.length)];
 }
-
 function sanitizeFilename(s: string) {
   return s.replace(/[^a-z0-9._-]/gi, '-').replace(/-+/g, '-').slice(0, 200);
 }
-
 export async function downloadImageToTemp(url: string, hint = 'image'): Promise<string> {
   const res = await fetch(url, { headers: { 'User-Agent': 'randoplane-downloader/1.0' } });
   if (!res.ok) throw new Error(`Download failed: ${res.status} ${res.statusText}`);
@@ -274,7 +275,6 @@ export async function downloadImageToTemp(url: string, hint = 'image'): Promise<
   await streamPipeline(body, fs.createWriteStream(outPath));
   return outPath;
 }
-
 export function composeCaption(regOrKeyword: string, img: RoowusImage) {
   const aircraft = (img?.Aircraft || '').toString().trim();
   const airline = (img?.Airline || '').toString().trim();
@@ -294,10 +294,25 @@ export function composeCaption(regOrKeyword: string, img: RoowusImage) {
   const photoBy = photographer ? `Photo by ${photographer} on JetPhotos:` : `Photo on JetPhotos:`;
   const link = img?.Link ? String(img.Link).trim() : '';
   const captionText = link ? `${main}.\n\n${photoBy}\n${link}` : `${main}. ${photoBy}`;
-  return { text: captionText, link };
+  return { text: captionText };
 }
-
-export function recordPostedPhoto(photoId?: string) {
-  if (!photoId) return;
-  addToPostedHistory(photoId);
+export function recordPostedPhoto(photoId: string) {
+  try {
+    ensureCacheDir();
+    let arr: string[] = [];
+    if (fs.existsSync(POSTED_HISTORY)) {
+      try { arr = JSON.parse(fs.readFileSync(POSTED_HISTORY, 'utf8') || '[]'); } catch { arr = []; }
+    }
+    if (!arr.includes(String(photoId))) {
+      arr.push(String(photoId));
+      try { fs.writeFileSync(POSTED_HISTORY, JSON.stringify(arr.slice(-500)), 'utf8'); } catch {}
+    }
+  } catch {}
+}
+export function wasPhotoPosted(photoId: string) {
+  try {
+    if (!fs.existsSync(POSTED_HISTORY)) return false;
+    const arr = JSON.parse(fs.readFileSync(POSTED_HISTORY, 'utf8') || '[]');
+    return Array.isArray(arr) && arr.includes(String(photoId));
+  } catch { return false; }
 }
