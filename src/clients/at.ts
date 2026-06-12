@@ -28,46 +28,65 @@ async function ensureAgent() {
   return agent;
 }
 
+function guessContentType(filename: string) {
+  const l = filename.toLowerCase();
+  if (l.endsWith('.png')) return 'image/png';
+  if (l.endsWith('.webp')) return 'image/webp';
+  if (l.endsWith('.gif')) return 'image/gif';
+  return 'image/jpeg';
+}
+
+function truncate(o: any, n = 2000) {
+  try { return JSON.stringify(o, null, 2).slice(0, n); } catch { return String(o).slice(0, n); }
+}
+
 export async function postImage(opts: PostOptions) {
   const agent = await ensureAgent();
   const imageBuffer = fs.readFileSync(opts.path);
   const contentType = guessContentType(opts.path);
   const size = imageBuffer.byteLength;
 
-  const uploadRes: any = await agent.uploadBlob(imageBuffer, { encoding: 'image/*', headers: { 'content-type': contentType } }).catch(async (e) => {
-    try { return await agent.uploadBlob(imageBuffer); } catch (err) { throw err; }
-  });
-
-  let cid: string | undefined = undefined;
-  if (!cid) cid = uploadRes?.cid;
-  if (!cid) cid = uploadRes?.data?.cid;
-  if (!cid) cid = uploadRes?.blob?.ref;
-  if (!cid) cid = uploadRes?.data?.blob?.ref;
-  if (!cid) cid = uploadRes?.blob?.cid;
-  if (!cid) cid = uploadRes?.data?.blob?.cid;
-  if (!cid) {
-    const maybe = uploadRes;
-    if (maybe && typeof maybe === 'object') {
-      const findCid = (o: any): string | undefined => {
-        if (!o || typeof o !== 'object') return undefined;
-        if (typeof o === 'string' && /^[a-z0-9]{10,}/i.test(o)) return o;
-        if (typeof o.cid === 'string') return o.cid;
-        if (typeof o.ref === 'string') return o.ref;
-        for (const k of Object.keys(o)) {
-          try {
-            const v = findCid(o[k]);
-            if (v) return v;
-          } catch {}
-        }
-        return undefined;
-      };
-      cid = findCid(maybe);
+  let uploadRes: any;
+  try {
+    uploadRes = await agent.uploadBlob(imageBuffer, { encoding: 'image/*', headers: { 'content-type': contentType } });
+  } catch (e1) {
+    try {
+      uploadRes = await agent.uploadBlob(imageBuffer);
+    } catch (e2) {
+      console.error('Upload failed (both attempts):', e1, e2);
+      throw e2;
     }
   }
 
-  if (!cid) {
-    console.error('uploadRes (truncated) for debugging:', JSON.stringify(uploadRes, null, 2).slice(0, 2000));
-    throw new Error('Failed to upload image to Bluesky (no CID returned).');
+  let blobRefObj: any = undefined;
+  if (uploadRes?.data?.blob?.ref) blobRefObj = uploadRes.data.blob.ref;
+  else if (uploadRes?.blob?.ref) blobRefObj = uploadRes.blob.ref;
+  else if (uploadRes?.data?.cid) blobRefObj = { $link: uploadRes.data.cid };
+  else if (uploadRes?.cid) blobRefObj = { $link: uploadRes.cid };
+  else if (uploadRes?.blob?.cid) blobRefObj = { $link: uploadRes.blob.cid };
+  else if (uploadRes?.data?.blob?.cid) blobRefObj = { $link: uploadRes.data.blob.cid };
+
+  if (typeof blobRefObj === 'string') blobRefObj = { $link: blobRefObj };
+
+  if (!blobRefObj) {
+    const findRef = (o: any): any => {
+      if (!o || typeof o !== 'object') return undefined;
+      if (o.$link && typeof o.$link === 'string') return { $link: o.$link };
+      if (o.ref && typeof o.ref === 'object' && o.ref.$link) return o.ref;
+      for (const k of Object.keys(o)) {
+        try {
+          const v = findRef(o[k]);
+          if (v) return v;
+        } catch {}
+      }
+      return undefined;
+    };
+    blobRefObj = findRef(uploadRes);
+  }
+
+  if (!blobRefObj) {
+    console.error('uploadRes (truncated) for debugging:', truncate(uploadRes));
+    throw new Error('Failed to resolve blob reference (no CID or ref found in upload response).');
   }
 
   const imageEmbed: any = {
@@ -75,11 +94,15 @@ export async function postImage(opts: PostOptions) {
     images: [
       {
         alt: opts.altText || '',
-        // The AT Protocol expects a blob value here. Use the $link shorthand referencing the CID.
-        image: { $link: cid },
+        image: blobRefObj,
       },
     ],
   };
+
+  try {
+    console.log('Bluesky uploadRes (truncated):', truncate(uploadRes));
+    console.log('Bluesky post payload (truncated):', truncate({ text: opts.text, embed: imageEmbed }));
+  } catch {}
 
   const now = new Date().toISOString();
 
@@ -88,12 +111,4 @@ export async function postImage(opts: PostOptions) {
     createdAt: now,
     embed: imageEmbed,
   });
-}
-
-function guessContentType(filename: string) {
-  const l = filename.toLowerCase();
-  if (l.endsWith('.png')) return 'image/png';
-  if (l.endsWith('.webp')) return 'image/webp';
-  if (l.endsWith('.gif')) return 'image/gif';
-  return 'image/jpeg';
 }
