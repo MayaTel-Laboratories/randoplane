@@ -1,9 +1,9 @@
-import fs from 'fs';
-import path from 'path';
-import os from 'os';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import { pipeline } from 'stream';
 import { promisify } from 'util';
-import pLimit from 'p-limit';
+const pLimit = require('p-limit');
 
 const streamPipeline = promisify(pipeline);
 
