@@ -1,10 +1,12 @@
 import * as fs from 'fs';
 import { BskyAgent } from '@atproto/api';
+import sizeOf from 'image-size';
 
 type PostOptions = {
   path: string;
   text: string;
   altText?: string;
+  link?: string; // optional JetPhotos link to facet/embed
 };
 
 const SERVICE = process.env.BSKY_SERVICE || 'https://bsky.social';
@@ -46,9 +48,22 @@ export async function postImage(opts: PostOptions) {
   const contentType = guessContentType(opts.path);
   const size = imageBuffer.byteLength;
 
+  // compute width/height using image-size
+  let width: number | undefined = undefined;
+  let height: number | undefined = undefined;
+  try {
+    const dims = sizeOf(opts.path);
+    if (dims && typeof dims.width === 'number' && typeof dims.height === 'number') {
+      width = dims.width;
+      height = dims.height;
+    }
+  } catch (e) {
+    // fallback: leave aspectRatio undefined
+  }
+
   let uploadRes: any;
   try {
-    uploadRes = await agent.uploadBlob(imageBuffer, { encoding: 'image/*', headers: { 'content-type': contentType } });
+    uploadRes = await agent.uploadBlob(imageBuffer, { encoding: contentType });
   } catch (e1) {
     try {
       uploadRes = await agent.uploadBlob(imageBuffer);
@@ -93,26 +108,56 @@ export async function postImage(opts: PostOptions) {
 
   if (typeof blobObj.ref === 'string') blobObj = { $type: 'blob', ref: { $link: blobObj.ref }, mimeType: contentType, size };
 
+  const imageEntry: any = {
+    alt: opts.altText || '',
+    image: blobObj,
+  };
+  if (width && height) {
+    imageEntry.aspectRatio = { width, height };
+  }
+
   const imageEmbed: any = {
     $type: 'app.bsky.embed.images',
-    images: [
-      {
-        alt: opts.altText || '',
-        image: blobObj,
-      },
-    ],
+    images: [imageEntry],
   };
 
-  try {
-    console.log('Bluesky uploadRes (truncated):', truncate(uploadRes));
-    console.log('Bluesky post payload (truncated):', truncate({ text: opts.text, embed: imageEmbed }));
-  } catch {}
-
+  // Build record payload: include facets if the user supplied a link so the link becomes a clickable facet
   const now = new Date().toISOString();
-
-  await agent.post({
+  const record: any = {
+    $type: 'app.bsky.feed.post',
     text: opts.text,
     createdAt: now,
     embed: imageEmbed,
-  });
+  };
+
+  // If a link was passed, try to locate its byte offsets (UTF-8) and add a facets link feature.
+  if (opts.link && typeof opts.link === 'string' && opts.link.trim().length > 0) {
+    try {
+      const url = String(opts.link).trim();
+      const textBuf = Buffer.from(record.text || '', 'utf8');
+      const urlBuf = Buffer.from(url, 'utf8');
+      const idx = textBuf.indexOf(urlBuf);
+      if (idx !== -1) {
+        const start = idx;
+        const end = idx + urlBuf.length;
+        record.facets = [
+          {
+            index: { byteStart: start, byteEnd: end },
+            features: [
+              { $type: 'app.bsky.richtext.facet#link', uri: url }
+            ]
+          }
+        ];
+      }
+    } catch (e) {
+      // no-op - facets are optional
+    }
+  }
+
+  try {
+    console.log('Bluesky uploadRes (truncated):', truncate(uploadRes));
+    console.log('Bluesky post payload (truncated):', truncate(record));
+  } catch {}
+
+  await agent.post(record);
 }

@@ -8,6 +8,7 @@ const pLimit = require('p-limit');
 const streamPipeline = promisify(pipeline);
 
 export type RoowusImage = {
+  photoId?: string;
   Image?: string;
   Thumbnail?: string;
   Photographer?: string;
@@ -23,6 +24,9 @@ const DEFAULT_PHOTOS = Number(process.env.JP_PHOTOS || 5);
 const CONCURRENCY = Number(process.env.JP_CONCURRENCY || 6);
 const CACHE_TTL_SECONDS = Number(process.env.ROOWUS_CACHE_TTL || 3600);
 const CACHE_DIR = process.env.ROOWUS_CACHE_DIR || path.resolve(process.cwd(), '.roowus_cache');
+const POSTED_HISTORY_FILE = path.join(CACHE_DIR, 'posted_history.json');
+const POSTED_HISTORY_MAX = Number(process.env.ROOWUS_POSTED_HISTORY_MAX || 50);
+const MAX_RANDOM_PAGE = Number(process.env.ROOWUS_MAX_RANDOM_PAGE || 20);
 
 const limit = pLimit(CONCURRENCY);
 
@@ -52,6 +56,30 @@ function writeCache(key: string, obj: any) {
     ensureCacheDir();
     fs.writeFileSync(cacheKey(key), JSON.stringify(obj), 'utf8');
   } catch {}
+}
+
+function readPostedHistory(): string[] {
+  try {
+    ensureCacheDir();
+    if (!fs.existsSync(POSTED_HISTORY_FILE)) return [];
+    const raw = fs.readFileSync(POSTED_HISTORY_FILE, 'utf8');
+    return JSON.parse(raw || '[]');
+  } catch {
+    return [];
+  }
+}
+function writePostedHistory(list: string[]) {
+  try {
+    ensureCacheDir();
+    fs.writeFileSync(POSTED_HISTORY_FILE, JSON.stringify(list.slice(-POSTED_HISTORY_MAX)), 'utf8');
+  } catch {}
+}
+function addToPostedHistory(id: string) {
+  if (!id) return;
+  const hist = readPostedHistory();
+  if (hist[hist.length - 1] === id) return;
+  hist.push(id);
+  writePostedHistory(hist);
 }
 
 async function fetchJson(url: string, opts: RequestInit = {}) {
@@ -130,6 +158,7 @@ function normalizePhoto(p: any): RoowusImage {
     p.pageUrlFull ??
     p.photo_page_url_full;
   return {
+    photoId: get(p.photoId ?? p.photo_id ?? p.id),
     Image: get(p.imageUrl ?? p.image ?? p.fullUrl ?? p.urls?.full),
     Thumbnail: get(p.thumbnailUrl ?? p.thumb ?? p.urls?.thumb ?? p.urls?.small),
     Photographer: get(p.photographer ?? p.photographerName ?? p.author),
@@ -149,17 +178,30 @@ async function retry<T>(fn: () => Promise<T>, attempts = 3, backoffMs = 300): Pr
   throw last;
 }
 
+async function fetchPageForQuery(urlBase: URL, page: number) {
+  const u = new URL(urlBase.toString());
+  u.searchParams.set('page', String(page));
+  return await fetchJson(u.toString());
+}
+
 export async function fetchForReg(reg: string, photos = DEFAULT_PHOTOS) {
   const key = `reg:${reg}:p:${photos}`;
   const fromCache = readCache(key);
   if (fromCache) return fromCache;
-  const url = new URL(BASE + '/');
-  url.searchParams.set('page', '1');
-  url.searchParams.set('sort-order', '1');
-  url.searchParams.set('keywords', reg);
-  url.searchParams.set('keywords-type', 'registration');
-  url.searchParams.set('keywords-contain', '0');
-  const json = await limit(() => retry(() => fetchJson(url.toString())));
+
+  const baseUrl = new URL(BASE + '/');
+  baseUrl.searchParams.set('sort-order', '1');
+  baseUrl.searchParams.set('keywords', reg);
+  baseUrl.searchParams.set('keywords-type', 'registration');
+  baseUrl.searchParams.set('keywords-contain', '0');
+
+  // try a random page to increase randomness
+  const initial = await fetchJson(baseUrl.toString());
+  let pages = initial?.pages ?? initial?.totalPages ?? 1;
+  if (!pages || pages < 1) pages = 1;
+  const randomPage = Math.max(1, Math.min(pages, 1 + Math.floor(Math.random() * Math.min(pages, MAX_RANDOM_PAGE))));
+  const json = randomPage === 1 ? initial : await fetchPageForQuery(baseUrl, randomPage);
+
   const photosArr = Array.isArray(json.photos) ? json.photos : (json?.data ?? []);
   const result = { Reg: reg, Images: photosArr.slice(0, photos).map(normalizePhoto), raw: json };
   writeCache(key, result);
@@ -170,15 +212,38 @@ export async function fetchForKeyword(keyword: string, photos = DEFAULT_PHOTOS) 
   const key = `kw:${keyword}:p:${photos}`;
   const fromCache = readCache(key);
   if (fromCache) return fromCache;
-  const url = new URL(BASE + '/');
-  url.searchParams.set('page', '1');
-  url.searchParams.set('sort-order', '1');
-  url.searchParams.set('keywords', keyword);
-  url.searchParams.set('keywords-type', 'aircraft');
-  url.searchParams.set('keywords-contain', '3');
-  const json = await limit(() => retry(() => fetchJson(url.toString())));
+
+  const baseUrl = new URL(BASE + '/');
+  baseUrl.searchParams.set('sort-order', '1');
+  baseUrl.searchParams.set('keywords', keyword);
+  baseUrl.searchParams.set('keywords-type', 'aircraft');
+  baseUrl.searchParams.set('keywords-contain', '3');
+
+  const initial = await fetchJson(baseUrl.toString());
+  let pages = initial?.pages ?? initial?.totalPages ?? 1;
+  if (!pages || pages < 1) pages = 1;
+  const randomPage = Math.max(1, Math.min(pages, 1 + Math.floor(Math.random() * Math.min(pages, MAX_RANDOM_PAGE))));
+  const json = randomPage === 1 ? initial : await fetchPageForQuery(baseUrl, randomPage);
+
   const photosArr = Array.isArray(json.photos) ? json.photos : (json?.data ?? []);
-  const result = { Reg: keyword, Images: photosArr.slice(0, photos).map(normalizePhoto), raw: json };
+  const normalized = photosArr.map(normalizePhoto);
+
+  // Deduplicate against posted history: filter out recently posted photoIds
+  const posted = new Set(readPostedHistory());
+  const filtered = normalized.filter(p => !(p.photoId && posted.has(p.photoId)));
+
+  // If filtering removed everything, fall back to full normalized set
+  const candidatePool = filtered.length > 0 ? filtered : normalized;
+
+  // choose random subset to return up to "photos"
+  const selected: any[] = [];
+  const pool = candidatePool.slice();
+  while (selected.length < photos && pool.length > 0) {
+    const idx = Math.floor(Math.random() * pool.length);
+    selected.push(pool.splice(idx, 1)[0]);
+  }
+
+  const result = { Reg: keyword, Images: selected.map(normalizePhoto), raw: json };
   writeCache(key, result);
   return result;
 }
@@ -236,5 +301,11 @@ export function composeCaption(regOrKeyword: string, img: RoowusImage) {
   const photoBy = photographer ? `Photo by ${photographer} on JetPhotos:` : `Photo on JetPhotos:`;
   const link = img?.Link ? String(img.Link).trim() : '';
   const captionText = link ? `${main}.\n\n${photoBy}\n${link}` : `${main}. ${photoBy}`;
-  return { text: captionText };
+  return { text: captionText, link };
+}
+
+// When a post is successfully posted, call this to record its photoId to history:
+export function recordPostedPhoto(photoId?: string) {
+  if (!photoId) return;
+  addToPostedHistory(photoId);
 }
