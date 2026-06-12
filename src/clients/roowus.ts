@@ -299,15 +299,36 @@ export async function downloadImageToTemp(url: string, hint = 'image'): Promise<
   return outPath;
 }
 
-function trimAirportName(location: string): string {
-  let name = location.trim();
-  const parenIdx = name.indexOf('(');
-  if (parenIdx !== -1) name = name.slice(0, parenIdx).trim();
-  const commaIdx = name.indexOf(',');
-  if (commaIdx !== -1) name = name.slice(0, commaIdx).trim();
-  const dashIdx = name.indexOf(' - ');
-  if (dashIdx !== -1) name = name.slice(0, dashIdx).trim();
-  return name;
+function parseLocation(location: string): { name: string; country: string } {
+  const raw = location.trim();
+
+  const dashParts = raw.split(' – ');
+  const namePart = dashParts[0].trim();
+
+  const commaIdx = namePart.indexOf(',');
+  const name = commaIdx !== -1 ? namePart.slice(0, commaIdx).trim() : namePart;
+
+  let country = '';
+  if (dashParts.length >= 2) {
+    const afterFirst = dashParts[1].trim();
+    const commaInAfter = afterFirst.indexOf(',');
+    const candidate = commaInAfter !== -1 ? afterFirst.slice(commaInAfter + 1).trim() : afterFirst;
+    if (candidate.toLowerCase() === 'usa' || candidate.toLowerCase() === 'united states') {
+      const state = dashParts.length >= 3 ? dashParts[2].trim() : '';
+      country = state ? `${state}, USA` : 'USA';
+    } else {
+      country = candidate;
+    }
+  }
+
+  if (!country && dashParts.length === 1) {
+    const commaIdx2 = raw.indexOf(',');
+    if (commaIdx2 !== -1) {
+      country = raw.slice(commaIdx2 + 1).trim();
+    }
+  }
+
+  return { name, country };
 }
 
 function aOrAn(word: string): string {
@@ -320,7 +341,12 @@ export function composeCaption(regOrKeyword: string, img: RoowusImage) {
   const registration = (img?.Registration || '').toString().trim();
   const airline = (img?.Airline || '').toString().trim();
   const rawLocation = (img?.Location || '').toString().trim();
-  const location = rawLocation ? trimAirportName(rawLocation) : '';
+  const parsedLocation = rawLocation ? parseLocation(rawLocation) : null;
+  const location = parsedLocation
+    ? parsedLocation.country
+      ? `${parsedLocation.name} (${parsedLocation.country})`
+      : parsedLocation.name
+    : '';
   const when = (img?.DateTaken || '').toString().trim();
   const photographer = (img?.Photographer || '').toString().trim();
 
@@ -343,10 +369,12 @@ export function composeCaption(regOrKeyword: string, img: RoowusImage) {
     if (month === '00') {
       main += `, on an unknown date in ${year}`;
     } else if (day === '00') {
-      const monthName = new Date(`${year}-${month}-15`).toLocaleString('en-US', { month: 'long' });
+      const monthName = new Intl.DateTimeFormat('en-US', { month: 'long' }).format(new Date(`${year}-${month}-15T12:00:00`));
       main += `, in ${monthName} ${year}`;
     } else {
-      main += `, on ${when}`;
+      const dateObj = new Date(`${year}-${month}-${day}T12:00:00`);
+      const formatted = new Intl.DateTimeFormat('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }).format(dateObj);
+      main += `, on ${formatted}`;
     }
   }
 
