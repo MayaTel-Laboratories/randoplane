@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import { BskyAgent } from '@atproto/api';
+import sizeOf from 'buffer-image-size';
 
 type PostOptions = {
   path: string;
@@ -8,18 +9,9 @@ type PostOptions = {
   link?: string;
 };
 
-const SERVICE = process.env.BSKY_SERVICE || 'https://bsky.social';
+const SERVICE    = process.env.BSKY_SERVICE    || 'https://bsky.social';
 const IDENTIFIER = process.env.BSKY_IDENTIFIER || '';
-const PASSWORD = process.env.BSKY_PASSWORD || '';
-let sizeOf: ((p: string) => { width?: number; height?: number } | undefined) | null = null;
-try {
-  const _sizeOf = (eval('require') as NodeRequire)('image-size');
-  sizeOf = (p: string) => {
-    try { return _sizeOf(p); } catch { return undefined; }
-  };
-} catch {
-  sizeOf = null;
-}
+const PASSWORD   = process.env.BSKY_PASSWORD   || '';
 
 async function ensureAgent(): Promise<BskyAgent> {
   const agent = new BskyAgent({ service: SERVICE });
@@ -49,6 +41,7 @@ function guessContentType(filename: string): string {
 function truncatePostText(text: string, link?: string): string {
   const LIMIT = 295;
   if (Buffer.byteLength(text, 'utf8') <= LIMIT) return text;
+
   if (link && text.includes(link)) {
     const withoutLink = text.slice(0, text.lastIndexOf(link)).trimEnd();
     if (Buffer.byteLength(withoutLink, 'utf8') <= LIMIT) return withoutLink;
@@ -64,6 +57,8 @@ export async function postImage(opts: PostOptions): Promise<void> {
 
   const imageBuffer = fs.readFileSync(opts.path);
   const contentType = guessContentType(opts.path);
+  const dimensions = sizeOf(imageBuffer);
+
   let uploadRes: Awaited<ReturnType<typeof agent.uploadBlob>>;
   try {
     uploadRes = await agent.uploadBlob(imageBuffer, { encoding: contentType });
@@ -71,48 +66,36 @@ export async function postImage(opts: PostOptions): Promise<void> {
     uploadRes = await agent.uploadBlob(imageBuffer);
   }
 
-  const blobRef = uploadRes.data.blob;
-  let width: number | undefined;
-  let height: number | undefined;
-  try {
-    if (sizeOf) {
-      const dims = sizeOf(opts.path);
-      if (dims && typeof dims.width === 'number' && typeof dims.height === 'number') {
-        width = dims.width;
-        height = dims.height;
-      }
-    }
-  } catch {}
-
   const imageEntry: Record<string, unknown> = {
-    alt: opts.altText || '',
-    image: blobRef,
+    alt:   opts.altText || '',
+    image: uploadRes.data.blob,
+    aspectRatio: {
+      width:  dimensions.width,
+      height: dimensions.height,
+    },
   };
-  if (width && height) {
-    imageEntry.aspectRatio = { width, height };
-  }
 
   const postText = truncatePostText(opts.text, opts.link);
 
   const record: Record<string, unknown> = {
-    $type: 'app.bsky.feed.post',
-    text: postText,
+    $type:     'app.bsky.feed.post',
+    text:      postText,
     createdAt: new Date().toISOString(),
     embed: {
-      $type: 'app.bsky.embed.images',
+      $type:  'app.bsky.embed.images',
       images: [imageEntry],
     },
   };
 
-  if (opts.link && typeof opts.link === 'string' && opts.link.trim().length > 0) {
-    const url = opts.link.trim();
+  if (opts.link && opts.link.trim().length > 0) {
+    const url     = opts.link.trim();
     const textBuf = Buffer.from(postText, 'utf8');
     const urlBuf  = Buffer.from(url, 'utf8');
-    const idx = textBuf.indexOf(urlBuf);
+    const idx     = textBuf.indexOf(urlBuf);
     if (idx !== -1) {
       record.facets = [
         {
-          index: { byteStart: idx, byteEnd: idx + urlBuf.length },
+          index:    { byteStart: idx, byteEnd: idx + urlBuf.length },
           features: [{ $type: 'app.bsky.richtext.facet#link', uri: url }],
         },
       ];
