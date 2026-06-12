@@ -115,6 +115,12 @@ function cleanField(v: any): string | undefined {
   } catch { return undefined; }
 }
 
+function cleanRegistration(v: string | undefined): string | undefined {
+  if (!v) return undefined;
+  const s = v.split(' ')[0].trim();
+  return s || undefined;
+}
+
 function normalizePhoto(p: any): RoowusImage {
   const linkCandidate =
     p.photoPageUrl ??
