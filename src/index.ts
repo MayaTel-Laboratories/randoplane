@@ -6,7 +6,7 @@ import { postImage as postToMastodon } from './clients/mastodon';
 import { fetchForKeyword, chooseUsableImage, downloadImageToTemp, composeCaption, recordPostedPhoto, SearchParams } from './clients/roowus';
 
 const MANUFACTURERS = [
-  'Aerospatiale', 'Airbus', 'Antonov', 'BAC', 'BAe', 'Boeing', 'Bombardier',
+  'Concorde', 'Airbus', 'Antonov', 'BAC', 'BAe', 'Boeing', 'Bombardier',
   'COMAC', 'Convair', 'De Havilland', 'De Havilland Canada', 'Dornier',
   'Douglas', 'Embraer', 'Fairchild', 'Fokker', 'Ford', 'Harbin',
   'Hawker Siddeley', 'Ilyushin', 'Lockheed', 'Martin', 'McDonnell Douglas',
