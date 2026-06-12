@@ -52,7 +52,7 @@ jobs:
           BSKY_IDENTIFIER: ${{ secrets.BSKY_IDENTIFIER }}
           BSKY_PASSWORD: ${{ secrets.BSKY_PASSWORD }}
           MASTODON_ACCESS_TOKEN: ${{ secrets.MASTODON_ACCESS_TOKEN }}
-          ROOWUS_BASE: ${{ vars.ROOWUS_BASE || 'https://jp.rewis.workers.dev' }}
+          ROOWUS_BASE: ${{ vars.ROOWUS_BASE || 'https://randoplane-jetphotos-api.kingforpa.workers.dev/' }}
           JETAPI_PHOTOS: '3'
           JETAPI_USE_THUMBNAIL: 'false'
           POST_DRY_RUN: ${{ vars.POST_DRY_RUN || 'false' }}
