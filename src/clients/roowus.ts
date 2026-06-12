@@ -18,7 +18,7 @@ export type RoowusImage = {
   Location?: string;
 };
 
-const BASE = process.env.ROOWUS_BASE || 'https://jp.rewis.workers.dev';
+const BASE = process.env.ROOWUS_BASE || 'https://randoplane-jetphotos-api.kingforpa.workers.dev';
 const DEFAULT_PHOTOS = Number(process.env.JP_PHOTOS || 5);
 const CONCURRENCY = Number(process.env.JP_CONCURRENCY || 6);
 const CACHE_TTL_SECONDS = Number(process.env.ROOWUS_CACHE_TTL || 3600);
