@@ -22,15 +22,17 @@ function safeTrim(s?: string | null) {
   return (s || '').toString().trim();
 }
 
-function buildAltTextFromImage(regOrKeyword: string, img: any) {
+function buildAltText(regOrKeyword: string, img: any) {
   if (!img) return `Photo of aircraft (${regOrKeyword}).`;
   const aircraft = safeTrim(img.Aircraft);
+  const registration = safeTrim(img.Registration);
   const airline = safeTrim(img.Airline);
   const photographer = safeTrim(img.Photographer);
   const when = safeTrim(img.DateTaken);
   const parts: string[] = [];
   if (aircraft) parts.push(aircraft);
-  parts.push(regOrKeyword);
+  if (registration) parts.push(registration);
+  else parts.push(regOrKeyword);
   if (airline) parts.push(`(${airline})`);
   const main = parts.join(' ');
   const by = photographer ? `Photo: ${photographer}` : '';
@@ -52,7 +54,7 @@ async function tryUpgradeThumbnailToFull(thumbUrl: string) {
 
 async function runOnce() {
   const dryRun = envBool('POST_DRY_RUN', false);
-  const preferThumb = envBool('JETAPI_USE_THUMBNAIL', true);
+  const preferThumb = envBool('JETAPI_USE_THUMBNAIL', false);
   const photosBase = Number(process.env.JETAPI_PHOTOS || DEFAULT_PHOTOS) || DEFAULT_PHOTOS;
   const maxAttempts = Number(process.env.ROOWUS_ATTEMPTS || 5);
   const allowMissingMeta = envBool('ALLOW_MISSING_PHOTO_METADATA', false);
@@ -81,7 +83,7 @@ async function runOnce() {
     const idx = Math.floor(Math.random() * pool.length);
     const keyword = pool.splice(idx, 1)[0];
     const photos = photosBase * (1 + attempt);
-    console.log(`Attempt ${attempt + 1}/${maxAttempts}: querying Roowus for "${keyword}" (photos=${photos})`);
+    console.log(`Attempt ${attempt + 1}/${maxAttempts}: querying for "${keyword}" (photos=${photos})`);
     let jp;
     try {
       jp = await fetchForKeyword(keyword, photos);
@@ -91,10 +93,7 @@ async function runOnce() {
       continue;
     }
     const available = Array.isArray(jp?.Images) ? jp.Images.length : 0;
-    console.log(`Roowus returned ${available} images for "${keyword}"`);
-    try {
-      console.log('Normalized sample:', JSON.stringify((jp?.Images || []).slice(0, 2), null, 2));
-    } catch {}
+    console.log(`Returned ${available} images for "${keyword}"`);
     const usable = chooseUsableImage(jp);
     if (usable) {
       chosenImage = usable;
@@ -104,30 +103,28 @@ async function runOnce() {
   }
 
   if (!chosenImage) {
-    console.log('No image matched strict filter; trying relaxed fallback (Image+Link or Thumbnail+Link).');
+    console.log('No image matched strict filter; trying relaxed fallback.');
     for (const keyword of manufacturers) {
       try {
         const jp = await fetchForKeyword(keyword, photosBase * 2);
         lastRaw = jp?.raw;
-        const candidate = (jp?.Images || []).find((i: any) => i && ( (i.Image && i.Image.trim()) || (i.Thumbnail && i.Thumbnail.trim()) ) && i.Link);
+        const candidate = (jp?.Images || []).find((i: any) => i && ((i.Image && i.Image.trim()) || (i.Thumbnail && i.Thumbnail.trim())) && i.Link);
         if (candidate) {
           chosenImage = candidate;
           chosenKeyword = keyword;
           console.log(`Found relaxed candidate for "${keyword}".`);
           break;
         }
-      } catch (e) {
-        /* ignore */
-      }
+      } catch (e) {}
     }
   }
 
   if (!chosenImage) {
-    console.error(`Roowus API returned no usable images after ${maxAttempts} attempts.`);
+    console.error(`No usable images found after ${maxAttempts} attempts.`);
     if (lastRaw) {
-      try { console.error('Sample Roowus raw response (truncated):', JSON.stringify(lastRaw).slice(0, 2000)); } catch {}
+      try { console.error('Sample raw response (truncated):', JSON.stringify(lastRaw).slice(0, 2000)); } catch {}
     }
-    const msg = 'No usable Roowus images found. Increase JETAPI_PHOTOS, add more MANUFACTURERS, or run locally.';
+    const msg = 'No usable images found. Increase JETAPI_PHOTOS, add more MANUFACTURERS, or run locally.';
     if (failOnNoImage) throw new Error(msg);
     console.warn(msg);
     return;
@@ -143,9 +140,7 @@ async function runOnce() {
       console.log('POST_DRY_RUN=true — selected image missing metadata:', s);
       return;
     }
-    if (failOnNoImage) {
-      throw new Error(`Refusing to post: ${s}`);
-    }
+    if (failOnNoImage) throw new Error(`Refusing to post: ${s}`);
     console.warn(s + ' — not posting (set ALLOW_MISSING_PHOTO_METADATA=true to override).');
     return;
   }
@@ -164,22 +159,20 @@ async function runOnce() {
     downloadUrl = chosenImage.Thumbnail || chosenImage.Image;
   }
 
-  if (!downloadUrl) {
-    throw new Error('Selected image has no downloadable URL.');
-  }
+  if (!downloadUrl) throw new Error('Selected image has no downloadable URL.');
 
   console.log('Selected image URL:', downloadUrl);
   const tmpPath = await downloadImageToTemp(downloadUrl, chosenKeyword);
   console.log('Downloaded image to', tmpPath);
   const captionObj = composeCaption(chosenKeyword, chosenImage);
-  const altText = buildAltTextFromImage(chosenKeyword, chosenImage);
+  const altText = buildAltText(chosenKeyword, chosenImage);
 
   if (dryRun) {
     console.log('POST_DRY_RUN=true — skipping actual posts. Payload:');
     console.log('caption:', captionObj.text);
     console.log('altText:', altText);
     console.log('file:', tmpPath);
-    try { await fs.promises.unlink(tmpPath); console.log('Removed temp file', tmpPath); } catch (e) { console.warn('Failed to remove temp file', tmpPath, e); }
+    try { await fs.promises.unlink(tmpPath); } catch (e) {}
     return;
   }
 
@@ -187,15 +180,14 @@ async function runOnce() {
     const postOptions = { path: tmpPath, text: captionObj.text, altText, link: chosenImage.Link };
     const results = await Promise.allSettled([postToBluesky(postOptions), postToMastodon(postOptions)]);
 
-    // Record posted photo if Bluesky post succeeded
-    const blueskySettled = results[0];
-    if (blueskySettled && blueskySettled.status === 'fulfilled') {
+    const blueskyResult = results[0];
+    if (blueskyResult && blueskyResult.status === 'fulfilled') {
       try {
         if (chosenImage?.photoId) {
           recordPostedPhoto(chosenImage.photoId);
-          console.log('Recorded posted photoId to history:', chosenImage.photoId);
+          console.log('Recorded posted photoId:', chosenImage.photoId);
         } else {
-          console.log('No photoId present on chosenImage; skipping history record.');
+          console.log('No photoId on chosen image; skipping history record.');
         }
       } catch (e) {
         console.warn('Failed to record posted photo:', e);
@@ -205,13 +197,11 @@ async function runOnce() {
     const failures = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
     if (failures.length > 0) {
       failures.forEach((f) => console.error('failed:', (f as any).reason));
-      if (failures.length === results.length) {
-        throw new Error('All platforms failed.');
-      }
+      if (failures.length === results.length) throw new Error('All platforms failed.');
     }
-    console.log('Post completed (at least one platform succeeded).');
+    console.log('Post completed.');
   } finally {
-    try { await fs.promises.unlink(tmpPath); console.log('Removed temp file', tmpPath); } catch (e) { console.warn('Failed to remove temp file', tmpPath, e); }
+    try { await fs.promises.unlink(tmpPath); console.log('Removed temp file', tmpPath); } catch (e) {}
   }
 }
 
@@ -224,7 +214,7 @@ async function runOnce() {
       process.exit(0);
     } catch (err: any) {
       const msg = (err && err.message) ? err.message : String(err);
-      const noImages = msg.includes('No usable Roowus images found') || msg.includes('No manufacturers available');
+      const noImages = msg.includes('No usable images found') || msg.includes('No manufacturers available');
       if (!noImages) {
         console.error('Fatal:', err);
         process.exit(1);
