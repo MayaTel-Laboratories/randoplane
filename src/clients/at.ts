@@ -7,7 +7,6 @@ const BSKY_MAX_BYTES = 1900000;
 type PostOptions = {
   path: string;
   text: string;
-  altText?: string;
   link?: string;
 };
 
@@ -102,7 +101,7 @@ export async function postImage(opts: PostOptions): Promise<void> {
   }
 
   const imageEntry: Record<string, unknown> = {
-    alt:   opts.altText || '',
+    alt:   '',
     image: uploadRes.data.blob,
     aspectRatio: {
       width:  dimensions.width,
