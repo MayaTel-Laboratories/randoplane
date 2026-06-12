@@ -2,11 +2,6 @@ name: 'randoplane'
 
 on:
   workflow_dispatch:
-    inputs:
-      override_reg:
-        description: 'override'
-        required: false
-        default: ''
 
 jobs:
   randoplane:
@@ -14,47 +9,27 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+      - name: checkout repository
+        uses: actions/checkout@v4
         with:
           token: ${{ secrets.REPO_ACCESS_TOKEN }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - name: setup node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'yarn'
 
-      - name: Install dependencies
+      - name: install dependencies
         run: yarn install --immutable
-
-      - name: set manufacturer
-        id: pick
-        shell: bash
-        run: |
-          INPUT_OVERRIDE="${{ github.event.inputs.override_reg || '' }}"
-          VAR_OVERRIDE="${{ vars.OVERRIDE_REG || '' }}"
-          if [ -n "$INPUT_OVERRIDE" ]; then
-            MAN="$INPUT_OVERRIDE"
-            echo "Using workflow input override: $MAN"
-          elif [ -n "$VAR_OVERRIDE" ]; then
-            MAN="$VAR_OVERRIDE"
-            echo "Using repository variable OVERRIDE_REG: $MAN"
-          else
-            MAN=""
-            echo "No override provided; app will use MANUFACTURERS or default list"
-          fi
-          echo "MANUFACTURER=$MAN" >> $GITHUB_ENV
-          echo "MANUFACTURER=$MAN" > picked-manufacturer.txt
 
       - name: go go go
         env:
           BSKY_IDENTIFIER: ${{ secrets.BSKY_IDENTIFIER }}
           BSKY_PASSWORD: ${{ secrets.BSKY_PASSWORD }}
           MASTODON_ACCESS_TOKEN: ${{ secrets.MASTODON_ACCESS_TOKEN }}
-          ROOWUS_BASE: ${{ vars.ROOWUS_BASE || 'https://randoplane-jetphotos-api.kingforpa.workers.dev/' }}
-          JETAPI_PHOTOS: '3'
-          JETAPI_USE_THUMBNAIL: 'false'
+          ROOWUS_BASE: ${{ vars.ROOWUS_BASE || 'https://randoplane-jetphotos-api.kingforpa.workers.dev' }}
+          JETAPI_PHOTOS: '5'
           POST_DRY_RUN: ${{ vars.POST_DRY_RUN || 'false' }}
         run: |
           yarn --silent run start
