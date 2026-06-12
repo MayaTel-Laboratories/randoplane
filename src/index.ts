@@ -3,8 +3,7 @@ dotenv.config();
 if (process.env.JETAPI_BASE && !process.env.ROOWUS_BASE) process.env.ROOWUS_BASE = process.env.JETAPI_BASE;
 import { postImage as postToBluesky } from './clients/at';
 import { postImage as postToMastodon } from './clients/mastodon';
-import { fetchForReg, fetchForKeyword, chooseUsableImage } from './clients/roowus';
-import { downloadImageToTemp, composeCaption } from './clients/jetapi';
+import { fetchForReg, fetchForKeyword, chooseUsableImage, downloadImageToTemp, composeCaption } from './clients/roowus';
 import * as fs from 'fs';
 
 const DEFAULT_PHOTOS = 5;
