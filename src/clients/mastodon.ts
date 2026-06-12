@@ -6,7 +6,7 @@ const MASTODON_INSTANCE = 'https://tacobelllabs.net';
 type PostImageOptions = {
   path: fs.PathLike;
   text: string;
-  altText: string;
+  altText?: string;
 };
 
 async function postImage({ path: imagePath, text, altText }: PostImageOptions) {
