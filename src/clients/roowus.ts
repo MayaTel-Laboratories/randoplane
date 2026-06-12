@@ -54,14 +54,37 @@ function writeCache(key: string, obj: any) {
 }
 
 async function fetchJson(url: string, opts: RequestInit = {}) {
-  const res = await fetch(url, { ...opts, headers: { 'User-Agent': 'randoplane/roowus-adapter/1.0', ...(opts.headers || {}) } });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    const err: any = new Error(`Roowus API: ${res.status} ${res.statusText}${text ? ` - ${text.slice(0,200)}` : ''}`);
-    err.status = res.status;
+  const baseHeaders = { 'User-Agent': 'randoplane/roowus-adapter/1.0', ...(opts.headers || {}) };
+  const res1 = await fetch(url, { ...opts, headers: baseHeaders });
+  if (res1.ok) return res1.json();
+  const text1 = await res1.text().catch(() => '');
+  if (res1.status !== 403) {
+    const err: any = new Error(`Roowus API: ${res1.status} ${res1.statusText}${text1 ? ` - ${text1.slice(0,200)}` : ''}`);
+    err.status = res1.status;
     throw err;
   }
-  return res.json();
+  try {
+    const browserHeaders = {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Referer': 'https://www.jetphotos.com/',
+      'Sec-Fetch-Site': 'same-site',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Dest': 'document',
+      ...baseHeaders,
+    };
+    const res2 = await fetch(url, { ...opts, headers: browserHeaders });
+    if (res2.ok) return res2.json();
+    const text2 = await res2.text().catch(() => '');
+    const err2: any = new Error(`Roowus API (retry): ${res2.status} ${res2.statusText}${text2 ? ` - ${text2.slice(0,200)}` : ''}`);
+    err2.status = res2.status;
+    throw err2;
+  } catch (e) {
+    const err: any = new Error(`Roowus API: initial 403, retry failed: ${e && e.message ? e.message : e}`);
+    err.status = 403;
+    throw err;
+  }
 }
 
 function normalizePhoto(p: any): RoowusImage {
@@ -140,7 +163,7 @@ export async function downloadImageToTemp(url: string, hint = 'image'): Promise<
   else if (contentType.includes('jpeg')) ext = '.jpg';
   const filename = `randoplane-${sanitizeFilename(hint)}-${Date.now()}${ext}`;
   const outPath = path.join(os.tmpdir(), filename);
-  const body = res.body;
+  const body: any = res.body;
   if (!body) throw new Error('No response body to download');
   await streamPipeline(body, fs.createWriteStream(outPath));
   return outPath;
