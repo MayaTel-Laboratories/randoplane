@@ -135,7 +135,7 @@ function normalizePhoto(p: any): RoowusImage {
   const photographer = cleanField(p.photographer ?? p.photographerName ?? p.author);
   const aircraft = cleanField(p.aircraftType ?? p.model ?? p.aircraft);
   const airline = cleanField(p.airline ?? p.airlineName);
-  const registration = cleanField(p.registration ?? p.reg ?? p.tailNumber ?? p.tail_number);
+  const registration = cleanRegistration(cleanField(p.registration ?? p.reg ?? p.tailNumber ?? p.tail_number));
   const when = cleanField(p.year ?? p.taken_at ?? p.photoDate ?? p.uploadedDate);
   const location = cleanField(p.location ?? p.airport ?? p.locationName ?? p.location_full);
   const photoId = cleanField(p.photoId ?? p.id ?? p.photo_id);
