@@ -88,14 +88,30 @@ async function fetchJson(url: string, opts: RequestInit = {}) {
 }
 
 function normalizePhoto(p: any): RoowusImage {
+  const get = (v: any) => {
+    if (v === null || v === undefined) return undefined;
+    try { return String(v).trim() || undefined; } catch { return undefined; }
+  };
+  const linkCandidate =
+    p.photoPageUrl ??
+    p.photoPageURL ??
+    p.photo_page_url ??
+    p.photoUrl ??
+    p.photo_url ??
+    p.pageUrl ??
+    p.pageURL ??
+    p.url ??
+    p.link ??
+    p.photoPage ??
+    p.photo_page;
   return {
-    Image: p.imageUrl || p.image || p.fullUrl || p.urls?.full,
-    Thumbnail: p.thumbnailUrl || p.thumb || p.urls?.thumb,
-    Photographer: p.photographer || p.photographerName || p.author,
-    Link: p.pageUrl || p.url || p.link,
-    Aircraft: p.aircraftType || p.model,
-    Airline: p.airline,
-    DateTaken: p.year || p.taken_at,
+    Image: get(p.imageUrl ?? p.image ?? p.fullUrl ?? p.urls?.full),
+    Thumbnail: get(p.thumbnailUrl ?? p.thumb ?? p.urls?.thumb),
+    Photographer: get(p.photographer ?? p.photographerName ?? p.author),
+    Link: get(linkCandidate),
+    Aircraft: get(p.aircraftType ?? p.model),
+    Airline: get(p.airline),
+    DateTaken: get(p.year ?? p.taken_at),
   };
 }
 
@@ -143,7 +159,13 @@ export async function fetchForKeyword(keyword: string, photos = DEFAULT_PHOTOS) 
 
 export function chooseUsableImage(res: { Images?: RoowusImage[] } | null) {
   if (!res || !Array.isArray(res.Images) || res.Images.length === 0) return null;
-  const withAttr = res.Images.filter(i => i && i.Photographer && i.Link && i.Image);
+  const withAttr = res.Images.filter(i => {
+    if (!i) return false;
+    const hasImage = !!(i.Image && String(i.Image).trim().length > 0);
+    const hasPhot = !!(i.Photographer && String(i.Photographer).trim().length > 0);
+    const hasLink = !!(i.Link && String(i.Link).trim().length > 0);
+    return hasImage && hasPhot && hasLink;
+  });
   if (withAttr.length === 0) return null;
   return withAttr[Math.floor(Math.random() * withAttr.length)];
 }
