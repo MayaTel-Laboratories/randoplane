@@ -1,10 +1,6 @@
 This is a fork of Jason Prado's [bsky-image-bot](https://github.com/jasonprado/bsky-image-bot) that is designed specifically to post *random* images from a set folder, rather than sequential image, and also automatically determine the resolution to satisfy the Bluesky API.
 
-The end result of this bot is available [here](https://bsky.app/profile/esnupi.me).
-
-This fork differs significantly in how it functions, including stripping out the image resizing, while conforming to my very strict image name structuring and adding automatic resolution detection. And, again, it posts images *randomly* instead of sequentially. Keeping the same description felt not quite right as a result of these significant functional changes.
-
-The instructions below **will not work**. If you fork this, it will be a bit of a pain for you, especially since you will have to pull 18,000 *Peanuts* strips as well. As always: no refunds.
+This fork differs significantly in how it functions. Keeping the same description felt not quite right as a result of these significant functional changes. The instructions below **will not work**. If you fork this, it will be a bit of a pain for you, especially since you will have to pull 18,000 *Peanuts* strips as well. As always: no refunds.
 
 **In accordance with the original repository, this is licensed under the traditional MIT license instead of the modified MayaTel Software License usually seen in my repositories.**
 
