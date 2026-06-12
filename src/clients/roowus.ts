@@ -117,8 +117,9 @@ function cleanField(v: any): string | undefined {
 
 function cleanRegistration(v: string | undefined): string | undefined {
   if (!v) return undefined;
-  const s = v.split(' ')[0].trim();
-  return s || undefined;
+  const s = v.split(' ')[0].trim().toLowerCase();
+  if (!s || s === 'photos' || s === 'unknown' || s === 'n/a') return undefined;
+  return v.split(' ')[0].trim();
 }
 
 function normalizePhoto(p: any): RoowusImage {
@@ -140,7 +141,7 @@ function normalizePhoto(p: any): RoowusImage {
   const thumb = cleanField(p.thumbnailUrl ?? p.thumb ?? (p.urls && p.urls.thumb) ?? (p.urls && p.urls.small));
   const photographer = cleanField(p.photographer ?? p.photographerName ?? p.author);
   const rawAircraft = cleanField(p.aircraftType ?? p.model ?? p.aircraft);
-  const aircraft = rawAircraft ? rawAircraft.replace(/([a-z])([A-Z])/g, '$1 / $2') : undefined;
+  const aircraft = rawAircraft ? rawAircraft.replace(/(?<!Mc|Mac|De|du)([a-z])([A-Z])/g, '$1 / $2') : undefined;
   const airline = cleanField(p.airline ?? p.airlineName);
   const registration = cleanRegistration(cleanField(p.registration ?? p.reg ?? p.tailNumber ?? p.tail_number));
   const when = cleanField(p.year ?? p.taken_at ?? p.photoDate ?? p.uploadedDate);
@@ -327,13 +328,26 @@ export function composeCaption(regOrKeyword: string, img: RoowusImage) {
   const article = aOrAn(subjectWord);
 
   let main = `${article} ${subjectWord}`;
-  if (registration) main += `, registered ${registration}`;
+  if (registration) {
+    main += `, registered ${registration}`;
+  } else {
+    main += `, with an unknown registration`;
+  }
   if (airline) main += ` and operated by ${airline}`;
   if (location) main += `, at ${location}`;
   if (when) {
-    const unknownDate = when.includes('-00');
-    const year = when.split('-')[0];
-    main += unknownDate ? `, on an unknown date in ${year}` : `, on ${when}`;
+    const parts = when.split('-');
+    const year = parts[0] || '';
+    const month = parts[1] || '00';
+    const day = parts[2] || '00';
+    if (month === '00') {
+      main += `, on an unknown date in ${year}`;
+    } else if (day === '00') {
+      const monthName = new Date(`${year}-${month}-15`).toLocaleString('en-US', { month: 'long' });
+      main += `, in ${monthName} ${year}`;
+    } else {
+      main += `, on ${when}`;
+    }
   }
 
   const photoBy = photographer ? `Photo by ${photographer} on JetPhotos:` : `Photo on JetPhotos:`;
