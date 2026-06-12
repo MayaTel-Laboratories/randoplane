@@ -58,43 +58,47 @@ export async function postImage(opts: PostOptions) {
     }
   }
 
-  let blobRefObj: any = undefined;
-  if (uploadRes?.data?.blob?.ref) blobRefObj = uploadRes.data.blob.ref;
-  else if (uploadRes?.blob?.ref) blobRefObj = uploadRes.blob.ref;
-  else if (uploadRes?.data?.cid) blobRefObj = { $link: uploadRes.data.cid };
-  else if (uploadRes?.cid) blobRefObj = { $link: uploadRes.cid };
-  else if (uploadRes?.blob?.cid) blobRefObj = { $link: uploadRes.blob.cid };
-  else if (uploadRes?.data?.blob?.cid) blobRefObj = { $link: uploadRes.data.blob.cid };
+  let blobObj: any = undefined;
+  if (uploadRes?.data?.blob) blobObj = uploadRes.data.blob;
+  else if (uploadRes?.blob) blobObj = uploadRes.blob;
+  else {
+    let cid: string | undefined = undefined;
+    if (uploadRes?.data?.cid) cid = uploadRes.data.cid;
+    else if (uploadRes?.cid) cid = uploadRes.cid;
+    else if (uploadRes?.blob?.cid) cid = uploadRes.blob.cid;
+    else if (uploadRes?.data?.blob?.cid) cid = uploadRes.data.blob.cid;
+    if (cid) blobObj = { $type: 'blob', ref: { $link: cid }, mimeType: contentType, size };
+  }
 
-  if (typeof blobRefObj === 'string') blobRefObj = { $link: blobRefObj };
-
-  if (!blobRefObj) {
-    const findRef = (o: any): any => {
+  if (!blobObj) {
+    const findBlob = (o: any): any => {
       if (!o || typeof o !== 'object') return undefined;
-      if (o.$link && typeof o.$link === 'string') return { $link: o.$link };
-      if (o.ref && typeof o.ref === 'object' && o.ref.$link) return o.ref;
+      if (o.$type && o.ref && o.ref.$link) return o;
+      if (o.ref && o.ref.$link) return o;
       for (const k of Object.keys(o)) {
         try {
-          const v = findRef(o[k]);
+          const v = findBlob(o[k]);
           if (v) return v;
         } catch {}
       }
       return undefined;
     };
-    blobRefObj = findRef(uploadRes);
+    blobObj = findBlob(uploadRes);
   }
 
-  if (!blobRefObj) {
-    console.error('uploadRes (truncated) for debugging:', truncate(uploadRes));
-    throw new Error('Failed to resolve blob reference (no CID or ref found in upload response).');
+  if (!blobObj) {
+    console.error('uploadRes (truncated):', truncate(uploadRes));
+    throw new Error('Failed to resolve uploaded blob object (no blob found in upload response).');
   }
+
+  if (typeof blobObj.ref === 'string') blobObj = { $type: 'blob', ref: { $link: blobObj.ref }, mimeType: contentType, size };
 
   const imageEmbed: any = {
     $type: 'app.bsky.embed.images',
     images: [
       {
         alt: opts.altText || '',
-        image: blobRefObj,
+        image: blobObj,
       },
     ],
   };
