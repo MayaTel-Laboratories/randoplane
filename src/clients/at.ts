@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import { BskyAgent } from '@atproto/api';
-import sizeOf from 'buffer-image-size';
+import * as sizeOf from 'buffer-image-size';
 
 type PostOptions = {
   path: string;
