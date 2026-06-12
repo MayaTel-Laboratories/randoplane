@@ -18,7 +18,7 @@ export type RoowusImage = {
   Location?: string;
 };
 
-const BASE = process.env.ROOWUS_BASE || 'https://randoplane-jetphotos-api.kingforpa.workers.dev';
+const BASE = ((process.env.ROOWUS_BASE || 'https://randoplane-jetphotos-api.kingforpa.workers.dev').toString().trim()).replace(/\/+$/, '');
 const DEFAULT_PHOTOS = Number(process.env.JP_PHOTOS || 5);
 const CONCURRENCY = Number(process.env.JP_CONCURRENCY || 6);
 const CACHE_TTL_SECONDS = Number(process.env.ROOWUS_CACHE_TTL || 3600);
@@ -55,37 +55,48 @@ function writeCache(key: string, obj: any) {
 }
 
 async function fetchJson(url: string, opts: RequestInit = {}) {
-  const baseHeaders = { 'User-Agent': 'randoplane/roowus-adapter/1.0', ...(opts.headers || {}) };
-  const res1 = await fetch(url, { ...opts, headers: baseHeaders });
-  if (res1.ok) return res1.json();
-  const text1 = await res1.text().catch(() => '');
-  if (res1.status !== 403) {
-    const err: any = new Error(`Roowus API: ${res1.status} ${res1.statusText}${text1 ? ` - ${text1.slice(0,200)}` : ''}`);
-    err.status = res1.status;
+  const apiKey = process.env.ROOWUS_API_KEY;
+  const baseHeaders = {
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Referer': 'https://www.jetphotos.com/',
+    ...(opts.headers || {}),
+  };
+  if (apiKey) baseHeaders['x-api-key'] = apiKey;
+  const maxAttempts = Number(process.env.ROOWUS_FETCH_ATTEMPTS || 6);
+  const baseDelayMs = Number(process.env.ROOWUS_FETCH_BACKOFF_MS || 1000);
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    let res: Response | null = null;
+    try {
+      res = await fetch(url, { ...opts, headers: baseHeaders });
+    } catch (err) {
+      if (attempt === maxAttempts) throw new Error(`Roowus fetch failed: ${err && (err as any).message ? (err as any).message : err}`);
+      const jitter = Math.floor(Math.random() * 300);
+      await new Promise((r) => setTimeout(r, baseDelayMs * attempt + jitter));
+      continue;
+    }
+    if (res.ok) {
+      try { return await res.json(); } catch (e) { throw new Error(`Roowus JSON parse error: ${e && (e as any).message ? (e as any).message : e}`); }
+    }
+    const retryAfter = res.headers.get('retry-after');
+    const status = res.status;
+    const text = await res.text().catch(() => '');
+    if ((status === 429 || status === 403) && attempt < maxAttempts) {
+      let waitMs = baseDelayMs * Math.pow(2, attempt - 1);
+      if (retryAfter) {
+        const ra = parseInt(retryAfter, 10);
+        if (!Number.isNaN(ra)) waitMs = Math.max(waitMs, ra * 1000);
+      }
+      const jitter = Math.floor(Math.random() * 500);
+      await new Promise((r) => setTimeout(r, waitMs + jitter));
+      continue;
+    }
+    const err: any = new Error(`Roowus API: ${status} ${res.statusText}${text ? ` - ${text.slice(0,200)}` : ''}`);
+    err.status = status;
     throw err;
   }
-  try {
-    const browserHeaders = {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Referer': 'https://www.jetphotos.com/',
-      'Sec-Fetch-Site': 'same-site',
-      'Sec-Fetch-Mode': 'navigate',
-      'Sec-Fetch-Dest': 'document',
-      ...baseHeaders,
-    };
-    const res2 = await fetch(url, { ...opts, headers: browserHeaders });
-    if (res2.ok) return res2.json();
-    const text2 = await res2.text().catch(() => '');
-    const err2: any = new Error(`Roowus API (retry): ${res2.status} ${res2.statusText}${text2 ? ` - ${text2.slice(0,200)}` : ''}`);
-    err2.status = res2.status;
-    throw err2;
-  } catch (e) {
-    const err: any = new Error(`Roowus API: initial 403, retry failed: ${e && (e as any).message ? (e as any).message : e}`);
-    err.status = 403;
-    throw err;
-  }
+  throw new Error('Roowus fetch: exhausted retries');
 }
 
 function makeAbsoluteJetphotosLink(link?: string) {
