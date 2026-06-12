@@ -3,7 +3,7 @@ dotenv.config();
 import * as fs from 'fs';
 import { postImage as postToBluesky } from './clients/at';
 import { postImage as postToMastodon } from './clients/mastodon';
-import { fetchForKeyword, chooseUsableImage, downloadImageToTemp, composeCaption, recordPostedPhoto } from './clients/roowus';
+import { fetchForKeyword, chooseUsableImage, downloadImageToTemp, composeCaption, recordPostedPhoto, SearchParams } from './clients/roowus';
 
 const MANUFACTURERS = [
   'Aerospatiale', 'Airbus', 'Antonov', 'BAC', 'BAe', 'Boeing', 'Bombardier',
@@ -138,7 +138,7 @@ async function tryUpgradeThumbnailToFull(thumbUrl: string) {
   return undefined;
 }
 
-function buildSearchTerm(): string {
+function buildSearchParams(): SearchParams {
   const include = {
     manufacturer: Math.random() < 0.5,
     airline:      Math.random() < 0.5,
@@ -152,12 +152,12 @@ function buildSearchTerm(): string {
     else                 include.year = true;
   }
 
-  const parts: string[] = [];
-  if (include.manufacturer) parts.push(pickRandom(MANUFACTURERS));
-  if (include.airline)      parts.push(pickRandom(AIRLINES));
-  if (include.year)         parts.push(pickRandom(YEARS));
+  const params: SearchParams = {};
+  if (include.manufacturer) params.manufacturer = pickRandom(MANUFACTURERS);
+  if (include.airline)      params.airline = pickRandom(AIRLINES);
+  if (include.year)         params.year = pickRandom(YEARS);
 
-  return parts.join(' ');
+  return params;
 }
 
 async function runOnce() {
@@ -173,12 +173,13 @@ async function runOnce() {
   let lastRaw: any = null;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const keyword = buildSearchTerm();
+    const params = buildSearchParams();
+    const keyword = [params.manufacturer, params.airline, params.year].filter(Boolean).join(' / ');
     const photos = photosBase * (1 + Math.floor(attempt / 2));
     console.log(`Attempt ${attempt + 1}/${maxAttempts}: querying for "${keyword}" (photos=${photos})`);
     let jp;
     try {
-      jp = await fetchForKeyword(keyword, photos);
+      jp = await fetchForKeyword(params, photos);
       lastRaw = jp?.raw;
     } catch (e) {
       console.warn(`Fetch for "${keyword}" failed:`, (e && (e as any).message) ? (e as any).message : e);
@@ -198,9 +199,10 @@ async function runOnce() {
   if (!chosenImage) {
     console.log('No image matched strict filter; trying relaxed fallback.');
     for (let i = 0; i < 3; i++) {
-      const keyword = buildSearchTerm();
+      const fallbackParams = buildSearchParams();
+      const keyword = [fallbackParams.manufacturer, fallbackParams.airline, fallbackParams.year].filter(Boolean).join(' / ');
       try {
-        const jp = await fetchForKeyword(keyword, photosBase * 2);
+        const jp = await fetchForKeyword(fallbackParams, photosBase * 2);
         lastRaw = jp?.raw;
         const candidate = (jp?.Images || []).find((img: any) => img && ((img.Image && img.Image.trim()) || (img.Thumbnail && img.Thumbnail.trim())) && img.Link);
         if (candidate) {

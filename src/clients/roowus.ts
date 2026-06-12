@@ -183,26 +183,43 @@ function randomPage(max: number): number {
   return 1 + Math.floor(Math.random() * max);
 }
 
-export async function fetchForKeyword(keyword: string, photos = DEFAULT_PHOTOS, page?: number, sortOrder?: number) {
+export type SearchParams = {
+  manufacturer?: string;
+  airline?: string;
+  year?: string;
+};
+
+export async function fetchForKeyword(params: SearchParams, photos = DEFAULT_PHOTOS, page?: number, sortOrder?: number) {
   const resolvedPage = page ?? randomPage(10);
   const resolvedSort = sortOrder ?? randomSortOrder();
-  const key = `kw:${keyword}:p:${photos}:pg:${resolvedPage}:s:${resolvedSort}`;
+  const cacheId = JSON.stringify(params) + `:p:${photos}:pg:${resolvedPage}:s:${resolvedSort}`;
+  const key = `kw:${cacheId}`;
   const fromCache = readCache(key);
   if (fromCache) return fromCache;
 
   const url = new URL(BASE + '/');
   url.searchParams.set('page', String(resolvedPage));
   url.searchParams.set('sort-order', String(resolvedSort));
-  url.searchParams.set('keywords', keyword);
-  url.searchParams.set('keywords-type', 'aircraft');
-  url.searchParams.set('keywords-contain', '3');
+
+  if (params.manufacturer) {
+    url.searchParams.set('keywords', params.manufacturer);
+    url.searchParams.set('keywords-type', 'aircraft');
+    url.searchParams.set('keywords-contain', '3');
+  }
+  if (params.airline) {
+    url.searchParams.set('airline', params.airline);
+  }
+  if (params.year) {
+    url.searchParams.set('year', params.year);
+  }
 
   const json = await limit(() => retry(() => fetchJson(url.toString())));
   const photosArr = Array.isArray(json.photos) ? json.photos : (json?.data ?? []);
   let imgs = photosArr.slice(0, photos).map(normalizePhoto);
   imgs = shuffle(imgs);
 
-  const result = { Reg: keyword, Images: imgs, raw: json };
+  const label = [params.manufacturer, params.airline, params.year].filter(Boolean).join(' / ');
+  const result = { Reg: label, Images: imgs, raw: json };
   writeCache(key, result);
   return result;
 }
