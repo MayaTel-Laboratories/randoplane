@@ -186,10 +186,10 @@ async function runOnce() {
   try {
     const postOptions = { path: tmpPath, text: captionObj.text, altText, link: chosenImage.Link };
     const results = await Promise.allSettled([postToBluesky(postOptions), postToMastodon(postOptions)]);
-    const failures = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
-    // If Bluesky succeeded, record posted photo id to avoid reposting
-    const blueskyResult = results[0];
-    if (blueskyResult && (blueskyResult as PromiseFulfilledResult<any>).status !== 'rejected') {
+
+    // Record posted photo if Bluesky post succeeded
+    const blueskySettled = results[0];
+    if (blueskySettled && blueskySettled.status === 'fulfilled') {
       try {
         if (chosenImage?.photoId) {
           recordPostedPhoto(chosenImage.photoId);
@@ -201,6 +201,8 @@ async function runOnce() {
         console.warn('Failed to record posted photo:', e);
       }
     }
+
+    const failures = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
     if (failures.length > 0) {
       failures.forEach((f) => console.error('failed:', (f as any).reason));
       if (failures.length === results.length) {
