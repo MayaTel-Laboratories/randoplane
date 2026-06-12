@@ -1,0 +1,125 @@
+name: 'randoplane'
+
+on:
+  workflow_dispatch:
+    inputs:
+      override_reg:
+        description: 'override'
+        required: false
+        default: ''
+
+jobs:
+  post-random-plane:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+
+      - name: Checkout JetAPI repo
+        uses: actions/checkout@v6
+        with:
+          repository: 'macsencasaus/jetapi'
+          path: jetapi
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          fetch-depth: 1
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.24.4'
+
+      - name: Run JetAPI (background)
+        shell: bash
+        env:
+          HOST: 127.0.0.1
+          PORT: 4000
+        run: |
+          cd jetapi
+          # Run JetAPI in background; keep logs
+          nohup go run ./cmd/jetapi > jetapi.log 2>&1 & echo $! > /tmp/jetapi.pid
+          # Wait for service to be available
+          for i in $(seq 1 30); do
+            if curl -sS --fail http://127.0.0.1:4000/documentation >/dev/null 2>&1; then
+              echo "JetAPI is up"
+              break
+            fi
+            echo "Waiting for JetAPI..."
+            sleep 1
+          done
+          if ! curl -sS --fail http://127.0.0.1:4000/documentation >/dev/null 2>&1; then
+            echo "JetAPI failed to start — dumping logs"
+            tail -n +1 jetapi.log || true
+            cat jetapi.log || true
+            exit 1
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Choose registration (RNG)
+        id: pick
+        shell: bash
+        run: |
+          # Priority: workflow input override -> repo variable OVERRIDE_REG -> regs.txt -> fail
+          INPUT_OVERRIDE="${{ github.event.inputs.override_reg || '' }}"
+          VAR_OVERRIDE="${{ vars.OVERRIDE_REG || '' }}"
+          if [ -n "$INPUT_OVERRIDE" ]; then
+            REG="$INPUT_OVERRIDE"
+            echo "Using workflow input override: $REG"
+          elif [ -n "$VAR_OVERRIDE" ]; then
+            REG="$VAR_OVERRIDE"
+            echo "Using repository variable OVERRIDE_REG: $REG"
+          elif [ -f "./regs.txt" ]; then
+            REG=$(shuf -n 1 ./regs.txt)
+            echo "Selected random registration from regs.txt: $REG"
+          else
+            echo "No override provided and regs.txt not found. Please provide override_reg input or add regs.txt."
+            exit 1
+          fi
+          echo "JETAPI_REG=$REG" >> $GITHUB_ENV
+          echo "JETAPI_REG=$REG" > picked-reg.txt
+          echo "::set-output name=reg::$REG"
+
+      - name: Run bot (jetapi mode)
+        env:
+          # Bluesky / Mastodon secrets (must be configured in the repo)
+          BSKY_IDENTIFIER: ${{ secrets.BSKY_IDENTIFIER }}
+          BSKY_PASSWORD: ${{ secrets.BSKY_PASSWORD }}
+          MASTODON_ACCESS_TOKEN: ${{ secrets.MASTODON_ACCESS_TOKEN }}
+          # JetAPI local address (the job started the service bound to 127.0.0.1:4000)
+          JETAPI_BASE: 'http://127.0.0.1:4000'
+          POST_MODE: 'jetapi'
+          JETAPI_PHOTOS: '3'
+          # Optional: prefer thumbnails instead of full image (reduce risk)
+          JETAPI_USE_THUMBNAIL: 'true'
+          # Optional dry-run toggle for safe testing; set to 'true' to skip actual posting
+          POST_DRY_RUN: ${{ vars.POST_DRY_RUN || 'false' }}
+        run: |
+          echo "About to run bot with JETAPI_REG=$JETAPI_REG"
+          # run the TypeScript entry (ts-node)
+          yarn --silent run start
+
+      - name: Stop JetAPI
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/jetapi.pid ]; then
+            PID=$(cat /tmp/jetapi.pid)
+            echo "Killing JetAPI pid $PID"
+            kill "$PID" || true
+          fi
+          # Show logs for debugging
+          if [ -f jetapi/jetapi.log ]; then
+            echo "---- JetAPI log head ----"
+            head -n 200 jetapi/jetapi.log || true
+          fi

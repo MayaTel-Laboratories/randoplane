@@ -34,7 +34,6 @@ export async function fetchJetPhotos(reg: string, photos = 3, base = process.env
 
 export function chooseBestImage(jp?: JetPhotosResult) : JetPhotosImage | null {
   if (!jp || !Array.isArray(jp.Images) || jp.Images.length === 0) return null;
-  // prefer an image that has Photographer + Link
   const withPhotog = jp.Images.find(i => i.Photographer && i.Link);
   if (withPhotog) return withPhotog;
   return jp.Images[0];
