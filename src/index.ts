@@ -3,7 +3,7 @@ dotenv.config();
 import * as fs from 'fs';
 import { postImage as postToBluesky } from './clients/at';
 import { postImage as postToMastodon } from './clients/mastodon';
-import { fetchForKeyword, chooseUsableImage, downloadImageToTemp, composeCaption } from './clients/roowus';
+import { fetchForKeyword, chooseUsableImage, downloadImageToTemp, composeCaption, recordPostedPhoto } from './clients/roowus';
 
 const DEFAULT_PHOTOS = 5;
 const DEFAULT_MANUFACTURERS = ['Boeing', 'Airbus', 'Bombardier', 'Embraer', 'Lockheed', 'McDonnell Douglas'];
@@ -184,9 +184,23 @@ async function runOnce() {
   }
 
   try {
-    const postOptions = { path: tmpPath, text: captionObj.text, altText };
+    const postOptions = { path: tmpPath, text: captionObj.text, altText, link: chosenImage.Link };
     const results = await Promise.allSettled([postToBluesky(postOptions), postToMastodon(postOptions)]);
     const failures = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
+    // If Bluesky succeeded, record posted photo id to avoid reposting
+    const blueskyResult = results[0];
+    if (blueskyResult && (blueskyResult as PromiseFulfilledResult<any>).status !== 'rejected') {
+      try {
+        if (chosenImage?.photoId) {
+          recordPostedPhoto(chosenImage.photoId);
+          console.log('Recorded posted photoId to history:', chosenImage.photoId);
+        } else {
+          console.log('No photoId present on chosenImage; skipping history record.');
+        }
+      } catch (e) {
+        console.warn('Failed to record posted photo:', e);
+      }
+    }
     if (failures.length > 0) {
       failures.forEach((f) => console.error('failed:', (f as any).reason));
       if (failures.length === results.length) {
