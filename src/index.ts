@@ -90,52 +90,12 @@ for (let y = 1930; y <= new Date().getFullYear(); y++) {
   YEARS.push(String(y));
 }
 
-function envBool(name: string, fallback = false): boolean {
-  const v = (process.env[name] || '').toLowerCase().trim();
-  if (!v) return fallback;
-  return v === '1' || v === 'true' || v === 'yes';
-}
-
 function sleep(ms: number) {
   return new Promise((res) => setTimeout(res, ms));
 }
 
-function safeTrim(s?: string | null) {
-  return (s || '').toString().trim();
-}
-
 function pickRandom<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
-}
-
-function buildAltText(regOrKeyword: string, img: any) {
-  if (!img) return `Photo of aircraft (${regOrKeyword}).`;
-  const aircraft = safeTrim(img.Aircraft);
-  const registration = safeTrim(img.Registration);
-  const airline = safeTrim(img.Airline);
-  const photographer = safeTrim(img.Photographer);
-  const when = safeTrim(img.DateTaken);
-  const parts: string[] = [];
-  if (aircraft) parts.push(aircraft);
-  if (registration) parts.push(registration);
-  else parts.push(regOrKeyword);
-  if (airline) parts.push(`(${airline})`);
-  const main = parts.join(' ');
-  const by = photographer ? `Photo: ${photographer}` : '';
-  const whenPart = when ? when : '';
-  const alt = [main, whenPart, by].filter(Boolean).join(' · ');
-  return alt.length > 2000 ? alt.slice(0, 1997) + '...' : alt;
-}
-
-async function tryUpgradeThumbnailToFull(thumbUrl: string) {
-  if (!thumbUrl) return undefined;
-  try {
-    const candidate = thumbUrl.replace(/\/\d+\//, '/full/');
-    if (!candidate || candidate === thumbUrl) return undefined;
-    const resp = await fetch(candidate, { method: 'HEAD' });
-    if (resp.ok) return candidate;
-  } catch (e) {}
-  return undefined;
 }
 
 function buildSearchParams(): SearchParams {
@@ -161,55 +121,51 @@ function buildSearchParams(): SearchParams {
 }
 
 async function runOnce() {
-  const dryRun = envBool('POST_DRY_RUN', false);
-  const preferThumb = envBool('JETAPI_USE_THUMBNAIL', false);
-  const photosBase = Number(process.env.JETAPI_PHOTOS || 5) || 5;
-  const maxAttempts = Number(process.env.ROOWUS_ATTEMPTS || 8);
-  const allowMissingMeta = envBool('ALLOW_MISSING_PHOTO_METADATA', false);
-  const failOnNoImage = envBool('FAIL_ON_NO_IMAGE', false);
+  const dryRun = (process.env.POST_DRY_RUN || '').toLowerCase().trim();
+  const isDryRun = dryRun === '1' || dryRun === 'true' || dryRun === 'yes';
 
   let chosenImage: any = null;
   let chosenKeyword = '';
   let lastRaw: any = null;
 
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+  for (let attempt = 0; attempt < 8; attempt++) {
     const params = buildSearchParams();
     const keyword = [params.manufacturer, params.airline, params.year].filter(Boolean).join(' / ');
-    const photos = photosBase * (1 + Math.floor(attempt / 2));
-    console.log(`Attempt ${attempt + 1}/${maxAttempts}: querying for "${keyword}" (photos=${photos})`);
+    const photos = 5 * (1 + Math.floor(attempt / 2));
+    console.log(`attempt ${attempt + 1}/8: querying for "${keyword}" (photos=${photos})`);
     let jp;
     try {
       jp = await fetchForKeyword(params, photos);
       lastRaw = jp?.raw;
     } catch (e) {
-      console.warn(`Fetch for "${keyword}" failed:`, (e && (e as any).message) ? (e as any).message : e);
+      console.warn(`fetch for "${keyword}" failed:`, (e && (e as any).message) ? (e as any).message : e);
       continue;
     }
     const available = Array.isArray(jp?.Images) ? jp.Images.length : 0;
-    console.log(`Returned ${available} images for "${keyword}"`);
+    console.log(`returned ${available} images for "${keyword}"`);
     const usable = chooseUsableImage(jp);
     if (usable) {
       chosenImage = usable;
       chosenKeyword = keyword;
       break;
     }
-    console.log(`No usable image for "${keyword}", trying a different combination.`);
-    if (attempt < maxAttempts - 1) await sleep(3000);
+    console.log(`apparently "${keyword}" was a bad combo, trying again...`);
+    if (attempt < 7) await sleep(3000);
   }
 
   if (!chosenImage) {
-    console.log('No image matched strict filter; trying relaxed fallback.');
+    console.log('no image matched strict filter; trying again but looser...');
     for (let i = 0; i < 3; i++) {
       const fallbackParams = buildSearchParams();
       const keyword = [fallbackParams.manufacturer, fallbackParams.airline, fallbackParams.year].filter(Boolean).join(' / ');
       try {
-        const jp = await fetchForKeyword(fallbackParams, photosBase * 2);
+        const jp = await fetchForKeyword(fallbackParams, 10);
         lastRaw = jp?.raw;
         const candidate = (jp?.Images || []).find((img: any) => img && ((img.Image && img.Image.trim()) || (img.Thumbnail && img.Thumbnail.trim())) && img.Link);
         if (candidate) {
           chosenImage = candidate;
           chosenKeyword = keyword;
-          console.log(`Found relaxed candidate for "${keyword}".`);
+          console.log(`found relaxed candidate for "${keyword}".`);
           break;
         }
       } catch (e) {}
@@ -218,62 +174,53 @@ async function runOnce() {
 
   if (!chosenImage) {
     if (lastRaw) {
-      try { console.error('Sample raw response (truncated):', JSON.stringify(lastRaw).slice(0, 2000)); } catch {}
+      try { console.error('sample raw response (truncated):', JSON.stringify(lastRaw).slice(0, 2000)); } catch {}
     }
-    const msg = 'No usable images found after all attempts.';
-    if (failOnNoImage) throw new Error(msg);
+    const msg = 'i got nothing, sorry';
     console.warn(msg);
-    return;
+    throw new Error(msg);
   }
 
-  if ((!chosenImage.Photographer || !chosenImage.Link) && !allowMissingMeta) {
+  if (!chosenImage.Photographer || !chosenImage.Link) {
     const missing = [
       !chosenImage.Photographer ? 'Photographer' : null,
       !chosenImage.Link ? 'Link' : null,
     ].filter(Boolean).join(', ');
-    const s = `Selected image for "${chosenKeyword}" is missing metadata: ${missing}`;
-    if (dryRun) {
-      console.log('POST_DRY_RUN=true — selected image missing metadata:', s);
-      return;
-    }
-    if (failOnNoImage) throw new Error(`Refusing to post: ${s}`);
-    console.warn(s + ' — not posting (set ALLOW_MISSING_PHOTO_METADATA=true to override).');
+    console.warn(`selected image for "${chosenKeyword}" is missing metadata: ${missing} — not posting.`);
     return;
   }
 
-  const preferFull = !preferThumb;
   let downloadUrl: string | undefined = undefined;
-
-  if (preferFull) {
-    if (chosenImage.Image && String(chosenImage.Image).trim().length > 0) {
-      downloadUrl = chosenImage.Image;
-    } else if (chosenImage.Thumbnail && String(chosenImage.Thumbnail).trim().length > 0) {
-      const upgraded = await tryUpgradeThumbnailToFull(chosenImage.Thumbnail);
-      downloadUrl = upgraded || chosenImage.Thumbnail;
-    }
-  } else {
-    downloadUrl = chosenImage.Thumbnail || chosenImage.Image;
+  if (chosenImage.Image && String(chosenImage.Image).trim().length > 0) {
+    downloadUrl = chosenImage.Image;
+  } else if (chosenImage.Thumbnail && String(chosenImage.Thumbnail).trim().length > 0) {
+    try {
+      const candidate = chosenImage.Thumbnail.replace(/\/\d+\//, '/full/');
+      if (candidate && candidate !== chosenImage.Thumbnail) {
+        const resp = await fetch(candidate, { method: 'HEAD' });
+        if (resp.ok) downloadUrl = candidate;
+      }
+    } catch (e) {}
+    if (!downloadUrl) downloadUrl = chosenImage.Thumbnail;
   }
 
-  if (!downloadUrl) throw new Error('Selected image has no downloadable URL.');
+  if (!downloadUrl) throw new Error('no downloadable URL, somehow?');
 
-  console.log('Selected image URL:', downloadUrl);
+  console.log('your image is:', downloadUrl);
   const tmpPath = await downloadImageToTemp(downloadUrl, chosenKeyword);
-  console.log('Downloaded image to', tmpPath);
+  console.log('your image is stored at:', tmpPath);
   const captionObj = composeCaption(chosenKeyword, chosenImage);
-  const altText = buildAltText(chosenKeyword, chosenImage);
 
-  if (dryRun) {
-    console.log('POST_DRY_RUN=true — skipping actual posts. Payload:');
+  if (isDryRun) {
+    console.log('dry run. payload:');
     console.log('caption:', captionObj.text);
-    console.log('altText:', altText);
     console.log('file:', tmpPath);
     try { await fs.promises.unlink(tmpPath); } catch (e) {}
     return;
   }
 
   try {
-    const postOptions = { path: tmpPath, text: captionObj.text, altText, link: chosenImage.Link };
+    const postOptions = { path: tmpPath, text: captionObj.text, link: chosenImage.Link };
     const results = await Promise.allSettled([postToBluesky(postOptions), postToMastodon(postOptions)]);
 
     const blueskyResult = results[0];
@@ -281,46 +228,44 @@ async function runOnce() {
       try {
         if (chosenImage?.photoId) {
           recordPostedPhoto(chosenImage.photoId);
-          console.log('Recorded posted photoId:', chosenImage.photoId);
+          console.log('recorded photo id:', chosenImage.photoId);
         } else {
-          console.log('No photoId on chosen image; skipping history record.');
+          console.log('no photo id on chosen image; skipping writing it down...');
         }
       } catch (e) {
-        console.warn('Failed to record posted photo:', e);
+        console.warn('failed to record posted photo:', e);
       }
     }
 
     const failures = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
     if (failures.length > 0) {
       failures.forEach((f) => console.error('failed:', (f as any).reason));
-      if (failures.length === results.length) throw new Error('All platforms failed.');
+      if (failures.length === results.length) throw new Error('all platforms failed!');
     }
-    console.log('Post completed.');
+    console.log('posted!');
   } finally {
-    try { await fs.promises.unlink(tmpPath); console.log('Removed temp file', tmpPath); } catch (e) {}
+    try { await fs.promises.unlink(tmpPath); console.log('removed temp file', tmpPath); } catch (e) {}
   }
 }
 
 (async () => {
-  const maxEmptyRetries = Number(process.env.ROOWUS_EMPTY_RETRY_COUNT || 3);
-  const sleepSeconds = Number(process.env.ROOWUS_EMPTY_RETRY_SLEEP || 10);
-  for (let attempt = 0; attempt <= maxEmptyRetries; attempt++) {
+  for (let attempt = 0; attempt <= 3; attempt++) {
     try {
       await runOnce();
       process.exit(0);
     } catch (err: any) {
       const msg = (err && err.message) ? err.message : String(err);
-      const noImages = msg.includes('No usable images found');
+      const noImages = msg.includes('i got nothing, sorry');
       if (!noImages) {
-        console.error('Fatal:', err);
+        console.error('fatal:', err);
         process.exit(1);
       }
-      if (attempt < maxEmptyRetries) {
-        console.warn(`No usable images (attempt ${attempt + 1}/${maxEmptyRetries + 1}), sleeping ${sleepSeconds}s and retrying...`);
-        await sleep(sleepSeconds * 1000);
+      if (attempt < 3) {
+        console.warn(`no usable images (attempt ${attempt + 1}/4), sleeping 10s and retrying...`);
+        await sleep(10000);
         continue;
       } else {
-        console.error('Exhausted retries, exiting.');
+        console.error('no more retries. run the workflow again?');
         process.exit(0);
       }
     }
