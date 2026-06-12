@@ -141,7 +141,11 @@ function normalizePhoto(p: any): RoowusImage {
   const thumb = cleanField(p.thumbnailUrl ?? p.thumb ?? (p.urls && p.urls.thumb) ?? (p.urls && p.urls.small));
   const photographer = cleanField(p.photographer ?? p.photographerName ?? p.author);
   const rawAircraft = cleanField(p.aircraftType ?? p.model ?? p.aircraft);
-  const aircraft = rawAircraft ? rawAircraft.replace(/(?<!Mc|Mac|De|du)([a-z])([A-Z])/g, '$1 / $2') : undefined;
+  const aircraft = rawAircraft ? rawAircraft
+    .replace('AerospatialeBritish Aircraft Corporation', 'Aerospatiale / British Aircraft Corporation')
+    .replace('AérospatialeBritish Aircraft Corporation', 'Aérospatiale / British Aircraft Corporation')
+    .replace('McDonnellDouglas', 'McDonnell Douglas')
+    : undefined;
   const airline = cleanField(p.airline ?? p.airlineName);
   const registration = cleanRegistration(cleanField(p.registration ?? p.reg ?? p.tailNumber ?? p.tail_number));
   const when = cleanField(p.year ?? p.taken_at ?? p.photoDate ?? p.uploadedDate);
@@ -302,7 +306,8 @@ export async function downloadImageToTemp(url: string, hint = 'image'): Promise<
 function parseLocation(location: string): { name: string; country: string } {
   const raw = location.trim();
 
-  const dashParts = raw.split(' – ');
+  const normalised = raw.replace(/ – /g, ' - ');
+  const dashParts = normalised.split(' - ');
   const namePart = dashParts[0].trim();
 
   const commaIdx = namePart.indexOf(',');
