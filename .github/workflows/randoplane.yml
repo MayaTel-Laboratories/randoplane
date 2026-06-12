@@ -54,7 +54,7 @@ jobs:
           MASTODON_ACCESS_TOKEN: ${{ secrets.MASTODON_ACCESS_TOKEN }}
           ROOWUS_BASE: ${{ vars.ROOWUS_BASE || 'https://jp.rewis.workers.dev' }}
           JETAPI_PHOTOS: '3'
-          JETAPI_USE_THUMBNAIL: 'true'
+          JETAPI_USE_THUMBNAIL: 'false'
           POST_DRY_RUN: ${{ vars.POST_DRY_RUN || 'false' }}
         run: |
           yarn --silent run start

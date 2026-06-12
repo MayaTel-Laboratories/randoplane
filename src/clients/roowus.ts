@@ -15,6 +15,7 @@ export type RoowusImage = {
   Aircraft?: string;
   Airline?: string;
   DateTaken?: string;
+  Location?: string;
 };
 
 const BASE = process.env.ROOWUS_BASE || 'https://jp.rewis.workers.dev';
@@ -87,6 +88,18 @@ async function fetchJson(url: string, opts: RequestInit = {}) {
   }
 }
 
+function makeAbsoluteJetphotosLink(link?: string) {
+  if (!link) return undefined;
+  const s = link.toString().trim();
+  if (!s) return undefined;
+  if (s.startsWith('http://') || s.startsWith('https://')) return s;
+  if (s.startsWith('//')) return 'https:' + s;
+  if (s.startsWith('/')) return 'https://www.jetphotos.com' + s;
+  // sometimes link may be like 'www.jetphotos.com/photo/26'
+  if (s.startsWith('www.')) return 'https://' + s;
+  return s;
+}
+
 function normalizePhoto(p: any): RoowusImage {
   const get = (v: any) => {
     if (v === null || v === undefined) return undefined;
@@ -96,22 +109,25 @@ function normalizePhoto(p: any): RoowusImage {
     p.photoPageUrl ??
     p.photoPageURL ??
     p.photo_page_url ??
+    p.photoPage ??
+    p.photo_page ??
     p.photoUrl ??
     p.photo_url ??
     p.pageUrl ??
     p.pageURL ??
     p.url ??
     p.link ??
-    p.photoPage ??
-    p.photo_page;
+    p.pageUrlFull ??
+    p.photo_page_url_full;
   return {
     Image: get(p.imageUrl ?? p.image ?? p.fullUrl ?? p.urls?.full),
-    Thumbnail: get(p.thumbnailUrl ?? p.thumb ?? p.urls?.thumb),
+    Thumbnail: get(p.thumbnailUrl ?? p.thumb ?? p.urls?.thumb ?? p.urls?.small),
     Photographer: get(p.photographer ?? p.photographerName ?? p.author),
-    Link: get(linkCandidate),
-    Aircraft: get(p.aircraftType ?? p.model),
-    Airline: get(p.airline),
-    DateTaken: get(p.year ?? p.taken_at),
+    Link: makeAbsoluteJetphotosLink(get(linkCandidate)),
+    Aircraft: get(p.aircraftType ?? p.model ?? p.aircraft),
+    Airline: get(p.airline ?? p.airlineName),
+    DateTaken: get(p.year ?? p.taken_at ?? p.photoDate ?? p.uploadedDate),
+    Location: get(p.location ?? p.airport ?? p.locationName ?? p.location_full),
   };
 }
 
@@ -192,16 +208,19 @@ export async function downloadImageToTemp(url: string, hint = 'image'): Promise<
 }
 
 export function composeCaption(regOrKeyword: string, img: RoowusImage) {
-  const parts: string[] = [];
   const aircraft = (img?.Aircraft || '').toString().trim();
   const airline = (img?.Airline || '').toString().trim();
   const photographer = (img?.Photographer || '').toString().trim();
+  const when = (img?.DateTaken || '').toString().trim();
+  const location = (img?.Location || '').toString().trim();
+  const parts: string[] = [];
   if (aircraft) parts.push(aircraft);
-  parts.push(regOrKeyword);
-  if (airline) parts.push(`(${airline})`);
-  const main = parts.join(' ');
-  const by = photographer ? `Photo: ${photographer}` : '';
-  const link = img?.Link ? `\n\nSource: ${img.Link}` : '';
-  const captionText = [main, by].filter(Boolean).join(' · ') + link;
+  if (airline) parts.push(`operated by ${airline}`);
+  if (location) parts.push(`at ${location}`);
+  if (when) parts.push(`on ${when}`);
+  const main = parts.join(', ');
+  const photoBy = photographer ? `Photo by ${photographer} on JetPhotos.` : `Photo on JetPhotos.`;
+  const link = img?.Link ? `${img.Link}` : '';
+  const captionText = [main, photoBy, link].filter(Boolean).join(' ');
   return { text: captionText };
 }
