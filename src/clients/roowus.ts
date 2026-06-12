@@ -82,7 +82,7 @@ async function fetchJson(url: string, opts: RequestInit = {}) {
     err2.status = res2.status;
     throw err2;
   } catch (e) {
-    const err: any = new Error(`Roowus API: initial 403, retry failed: ${e && e.message ? e.message : e}`);
+    const err: any = new Error(`Roowus API: initial 403, retry failed: ${e && (e as any).message ? (e as any).message : e}`);
     err.status = 403;
     throw err;
   }
@@ -95,7 +95,6 @@ function makeAbsoluteJetphotosLink(link?: string) {
   if (s.startsWith('http://') || s.startsWith('https://')) return s;
   if (s.startsWith('//')) return 'https:' + s;
   if (s.startsWith('/')) return 'https://www.jetphotos.com' + s;
-  // sometimes link may be like 'www.jetphotos.com/photo/26'
   if (s.startsWith('www.')) return 'https://' + s;
   return s;
 }
@@ -177,7 +176,7 @@ export function chooseUsableImage(res: { Images?: RoowusImage[] } | null) {
   if (!res || !Array.isArray(res.Images) || res.Images.length === 0) return null;
   const withAttr = res.Images.filter(i => {
     if (!i) return false;
-    const hasImage = !!(i.Image && String(i.Image).trim().length > 0);
+    const hasImage = !!((i.Image && String(i.Image).trim().length > 0) || (i.Thumbnail && String(i.Thumbnail).trim().length > 0));
     const hasPhot = !!(i.Photographer && String(i.Photographer).trim().length > 0);
     const hasLink = !!(i.Link && String(i.Link).trim().length > 0);
     return hasImage && hasPhot && hasLink;
@@ -221,6 +220,6 @@ export function composeCaption(regOrKeyword: string, img: RoowusImage) {
   const main = parts.join(', ');
   const photoBy = photographer ? `Photo by ${photographer} on JetPhotos.` : `Photo on JetPhotos.`;
   const link = img?.Link ? `${img.Link}` : '';
-  const captionText = [main, photoBy, link].filter(Boolean).join(' ');
+  const captionText = link ? `${main}. ${photoBy}\n${link}` : `${main}. ${photoBy}`;
   return { text: captionText };
 }
