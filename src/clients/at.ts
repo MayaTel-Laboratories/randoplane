@@ -40,44 +40,35 @@ function guessContentType(filename: string): string {
   return 'image/jpeg';
 }
 
-async function compressToLimit(buffer: Buffer, contentType: string): Promise<{ buffer: Buffer; contentType: string }> {
-  if (buffer.byteLength <= BSKY_MAX_BYTES) return { buffer, contentType };
+async function compressToLimit(input: Uint8Array, contentType: string): Promise<{ data: Uint8Array; contentType: string }> {
+  if (input.byteLength <= BSKY_MAX_BYTES) return { data: input, contentType };
 
   let sharp: any;
   try {
     sharp = (eval('require') as NodeRequire)('sharp');
   } catch {
-    throw new Error(`Image is ${buffer.byteLength} bytes, exceeds Bluesky's 2MB limit, and sharp is not available to compress it.`);
+    throw new Error(`Image is ${input.byteLength} bytes, exceeds Bluesky's 2MB limit, and sharp is not available to compress it.`);
   }
 
-  console.log(`Image is ${buffer.byteLength} bytes, compressing to fit under ${BSKY_MAX_BYTES} bytes...`);
+  console.log(`Image is ${input.byteLength} bytes, compressing...`);
 
   let quality = 82;
-  let result = buffer;
-  let resultType = 'image/jpeg';
-
   while (quality >= 40) {
-    const compressed = await sharp(buffer).jpeg({ quality }).toBuffer();
+    const compressed: Buffer = await sharp(Buffer.from(input)).jpeg({ quality }).toBuffer();
     if (compressed.byteLength <= BSKY_MAX_BYTES) {
-      result = compressed;
       console.log(`Compressed to ${compressed.byteLength} bytes at quality ${quality}.`);
-      break;
+      return { data: new Uint8Array(compressed), contentType: 'image/jpeg' };
     }
     quality -= 10;
   }
 
-  if (result.byteLength > BSKY_MAX_BYTES) {
-    const compressed = await sharp(buffer).resize({ width: 2048 }).jpeg({ quality: 75 }).toBuffer();
-    if (compressed.byteLength <= BSKY_MAX_BYTES) {
-      result = compressed;
-      resultType = 'image/jpeg';
-      console.log(`Compressed with resize to ${compressed.byteLength} bytes.`);
-    } else {
-      throw new Error(`Could not compress image to under ${BSKY_MAX_BYTES} bytes (got ${compressed.byteLength}).`);
-    }
+  const resized: Buffer = await sharp(Buffer.from(input)).resize({ width: 2048 }).jpeg({ quality: 75 }).toBuffer();
+  if (resized.byteLength <= BSKY_MAX_BYTES) {
+    console.log(`Compressed with resize to ${resized.byteLength} bytes.`);
+    return { data: new Uint8Array(resized), contentType: 'image/jpeg' };
   }
 
-  return { buffer: result, contentType: resultType };
+  throw new Error(`Could not compress image to under ${BSKY_MAX_BYTES} bytes (got ${resized.byteLength}).`);
 }
 
 function truncatePostText(text: string, link?: string): string {
@@ -97,19 +88,17 @@ function truncatePostText(text: string, link?: string): string {
 export async function postImage(opts: PostOptions): Promise<void> {
   const agent = await ensureAgent();
 
-  let imageBuffer = fs.readFileSync(opts.path);
-  let contentType = guessContentType(opts.path);
-  const dimensions = sizeOf(imageBuffer);
+  const rawBuffer = fs.readFileSync(opts.path);
+  const contentType = guessContentType(opts.path);
+  const dimensions = sizeOf(Buffer.from(rawBuffer) as unknown as Buffer<ArrayBuffer>);
 
-  const compressed = await compressToLimit(imageBuffer, contentType);
-  imageBuffer = compressed.buffer;
-  contentType = compressed.contentType;
+  const { data: imageData, contentType: uploadContentType } = await compressToLimit(new Uint8Array(rawBuffer), contentType);
 
   let uploadRes: Awaited<ReturnType<typeof agent.uploadBlob>>;
   try {
-    uploadRes = await agent.uploadBlob(imageBuffer as unknown as Uint8Array, { encoding: contentType });
+    uploadRes = await agent.uploadBlob(imageData, { encoding: uploadContentType });
   } catch {
-    uploadRes = await agent.uploadBlob(imageBuffer as unknown as Uint8Array);
+    uploadRes = await agent.uploadBlob(imageData);
   }
 
   const imageEntry: Record<string, unknown> = {
