@@ -19,42 +19,6 @@ jobs:
         with:
           token: ${{ secrets.REPO_ACCESS_TOKEN }}
 
-      - name: Checkout JetAPI repo
-        uses: actions/checkout@v6
-        with:
-          repository: 'macsencasaus/jetapi'
-          path: jetapi
-          token: ${{ secrets.REPO_ACCESS_TOKEN }}
-          fetch-depth: 1
-
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.24.4'
-
-      - name: Run JetAPI (background)
-        shell: bash
-        env:
-          HOST: 127.0.0.1
-          PORT: 4000
-        run: |
-          cd jetapi
-          nohup go run ./cmd/jetapi > jetapi.log 2>&1 & echo $! > /tmp/jetapi.pid
-          for i in $(seq 1 30); do
-            if curl -sS --fail http://127.0.0.1:4000/documentation >/dev/null 2>&1; then
-              echo "JetAPI is up"
-              break
-            fi
-            echo "waiting for JetAPI..."
-            sleep 1
-          done
-          if ! curl -sS --fail http://127.0.0.1:4000/documentation >/dev/null 2>&1; then
-            echo "JetAPI failed to start — dumping logs"
-            tail -n +1 jetapi.log || true
-            cat jetapi.log || true
-            exit 1
-          fi
-
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
@@ -64,53 +28,33 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
-      - name: Choose registration (RNG)
+      - name: Set MANUFACTURER
         id: pick
         shell: bash
         run: |
           INPUT_OVERRIDE="${{ github.event.inputs.override_reg || '' }}"
           VAR_OVERRIDE="${{ vars.OVERRIDE_REG || '' }}"
           if [ -n "$INPUT_OVERRIDE" ]; then
-            REG="$INPUT_OVERRIDE"
-            echo "Using workflow input override: $REG"
+            MAN="$INPUT_OVERRIDE"
+            echo "Using workflow input override: $MAN"
           elif [ -n "$VAR_OVERRIDE" ]; then
-            REG="$VAR_OVERRIDE"
-            echo "Using repository variable OVERRIDE_REG: $REG"
-          elif [ -f "./regs.txt" ]; then
-            REG=$(shuf -n 1 ./regs.txt)
-            echo "Selected random registration from regs.txt: $REG"
+            MAN="$VAR_OVERRIDE"
+            echo "Using repository variable OVERRIDE_REG: $MAN"
           else
-            echo "No override provided and regs.txt not found. Please provide override_reg input or add regs.txt."
-            exit 1
+            MAN=""
+            echo "No override provided; app will use MANUFACTURERS or default list"
           fi
-          echo "JETAPI_REG=$REG" >> $GITHUB_ENV
-          echo "JETAPI_REG=$REG" > picked-reg.txt
-          echo "::set-output name=reg::$REG"
+          echo "MANUFACTURER=$MAN" >> $GITHUB_ENV
+          echo "MANUFACTURER=$MAN" > picked-manufacturer.txt
 
-      - name: Run bot (jetapi mode)
+      - name: Run bot (roowus)
         env:
           BSKY_IDENTIFIER: ${{ secrets.BSKY_IDENTIFIER }}
           BSKY_PASSWORD: ${{ secrets.BSKY_PASSWORD }}
           MASTODON_ACCESS_TOKEN: ${{ secrets.MASTODON_ACCESS_TOKEN }}
-          JETAPI_BASE: 'http://127.0.0.1:4000'
-          POST_MODE: 'jetapi'
+          ROOWUS_BASE: ${{ vars.ROOWUS_BASE || 'https://jp.rewis.workers.dev' }}
           JETAPI_PHOTOS: '3'
           JETAPI_USE_THUMBNAIL: 'true'
           POST_DRY_RUN: ${{ vars.POST_DRY_RUN || 'false' }}
         run: |
-          echo "About to run bot with JETAPI_REG=$JETAPI_REG"
           yarn --silent run start
-
-      - name: Stop JetAPI
-        if: always()
-        shell: bash
-        run: |
-          if [ -f /tmp/jetapi.pid ]; then
-            PID=$(cat /tmp/jetapi.pid)
-            echo "Killing JetAPI pid $PID"
-            kill "$PID" || true
-          fi
-          if [ -f jetapi/jetapi.log ]; then
-            echo "---- JetAPI log head ----"
-            head -n 200 jetapi/jetapi.log || true
-          fi
