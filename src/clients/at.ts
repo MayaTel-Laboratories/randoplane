@@ -34,12 +34,10 @@ export async function postImage(opts: PostOptions) {
   const contentType = guessContentType(opts.path);
   const size = imageBuffer.byteLength;
 
-  // Attempt upload
   const uploadRes: any = await agent.uploadBlob(imageBuffer, { encoding: 'image/*', headers: { 'content-type': contentType } }).catch(async (e) => {
     try { return await agent.uploadBlob(imageBuffer); } catch (err) { throw err; }
   });
 
-  // Resolve CID from a few common shapes
   let cid: string | undefined = undefined;
   if (!cid) cid = uploadRes?.cid;
   if (!cid) cid = uploadRes?.data?.cid;
@@ -68,30 +66,23 @@ export async function postImage(opts: PostOptions) {
   }
 
   if (!cid) {
-    // Dump uploadRes for debugging (but avoid leaking secrets)
     console.error('uploadRes (truncated) for debugging:', JSON.stringify(uploadRes, null, 2).slice(0, 2000));
     throw new Error('Failed to upload image to Bluesky (no CID returned).');
   }
 
-  // Build the proper blob-shaped embed that Bluesky expects
   const imageEmbed: any = {
     $type: 'app.bsky.embed.images',
     images: [
       {
         alt: opts.altText || '',
-        image: {
-          $type: 'blob',
-          ref: { $link: cid },
-          mimeType: contentType,
-          size,
-        },
+        // The AT Protocol expects a blob value here. Use the $link shorthand referencing the CID.
+        image: { $link: cid },
       },
     ],
   };
 
   const now = new Date().toISOString();
 
-  // Post the status with image embed, sending text exactly as provided
   await agent.post({
     text: opts.text,
     createdAt: now,
