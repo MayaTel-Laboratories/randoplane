@@ -107,9 +107,9 @@ export async function postImage(opts: PostOptions): Promise<void> {
 
   let uploadRes: Awaited<ReturnType<typeof agent.uploadBlob>>;
   try {
-    uploadRes = await agent.uploadBlob(imageBuffer, { encoding: contentType });
+    uploadRes = await agent.uploadBlob(imageBuffer as unknown as Uint8Array, { encoding: contentType });
   } catch {
-    uploadRes = await agent.uploadBlob(imageBuffer);
+    uploadRes = await agent.uploadBlob(imageBuffer as unknown as Uint8Array);
   }
 
   const imageEntry: Record<string, unknown> = {
