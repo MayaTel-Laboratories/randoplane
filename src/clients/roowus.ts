@@ -33,7 +33,7 @@ const MILITARY_KEYWORDS = [
   'f-18', 'f/a-18', 'f-4', 'f-86', 'f-100', 'f-104', 'f-105', 'f-111',
   'b-52', 'b-1', 'b-2', 'c-17', 'c-130', 'c-5', 'e-3', 'e-8', 'kc-135',
   'lightning ii', 'raptor', 'fighting falcon', 'hornet', 'tomcat', 'phantom',
-  'stratofortress', 'globemaster', 'hercules', 'galaxy',
+  'stratofortress', 'globemaster', 'hercules', 'galaxy', 'warplane', 'warbird',
 ];
 
 const BASE = ((process.env.ROOWUS_BASE || 'https://randoplane-jetphotos-api.kingforpa.workers.dev').toString().trim()).replace(/\/+$/, '');
