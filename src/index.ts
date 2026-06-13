@@ -116,7 +116,7 @@ const AIRLINES = [
 
   'Africa Express', 'Africa West', 'African Airlines International',
   'Air Afrique', 'Air Botswana', 'Air Burkina', 'Air Cameroon',
-  'Air Comoros', 'Air Congo', 'Air Côte d'Ivoire', 'Air Djibouti',
+  'Air Comoros', 'Air Congo', 'Air Djibouti',
   'Air Gabon', 'Air Ghana', 'Air Guinea', 'Air Ivoire',
   'Air Kenya', 'Air Lesotho', 'Air Madagascar', 'Air Malawi',
   'Air Mali', 'Air Mauritanie', 'Air Mozambique', 'Air Namibia',
@@ -145,7 +145,7 @@ const AIRLINES = [
   'Pakistan International Airlines', 'Peach Aviation', 'Regal Air',
   'Royal Brunei Airlines', 'S7 Airlines', 'Shandong Airlines',
   'Shenzhen Airlines', 'Sichuan Airlines', 'Silk Air', 'SpiceJet',
-  'Spring Airlines', 'SriLankan Airlines', 'T'way Air', 'Tigerair',
+  'Spring Airlines', 'SriLankan Airlines', 'Tigerair',
   'Transasia Airways', 'Uni Air', 'Vanilla Air', 'Vietjet Air',
   'Vladivostok Air', 'Wuhan Airlines', 'Xiamen Airlines', 'Yemenia',
 
