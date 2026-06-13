@@ -20,11 +20,20 @@ export type RoowusImage = {
   [k: string]: any;
 };
 
+const PRIVATE_KEYWORDS = [
+  'private', 'general aviation', 'Piper', 'Beechcraft', 'Cirrus',
+];
+
 const MILITARY_KEYWORDS = [
   'air force', 'army', 'navy', 'naval', 'marine', 'marines', 'military',
   'defence', 'defense', 'luftwaffe', 'armée', 'fuerza aérea', 'aeronautica',
   'royal air', 'coast guard', 'national guard', 'air command', 'air wing',
   'usaf', 'usmc', 'raf ', 'jmsdf', 'plaaf',
+  'lockheed martin', 'boeing f-', 'f-35', 'f-22', 'f-16', 'f-15', 'f-14',
+  'f-18', 'f/a-18', 'f-4', 'f-86', 'f-100', 'f-104', 'f-105', 'f-111',
+  'b-52', 'b-1', 'b-2', 'c-17', 'c-130', 'c-5', 'e-3', 'e-8', 'kc-135',
+  'lightning ii', 'raptor', 'fighting falcon', 'hornet', 'tomcat', 'phantom',
+  'stratofortress', 'globemaster', 'hercules', 'galaxy',
 ];
 
 const BASE = ((process.env.ROOWUS_BASE || 'https://randoplane-jetphotos-api.kingforpa.workers.dev').toString().trim()).replace(/\/+$/, '');
@@ -173,6 +182,11 @@ function isMilitary(img: RoowusImage): boolean {
   return MILITARY_KEYWORDS.some(kw => haystack.includes(kw));
 }
 
+function isPrivate(img: RoowusImage): boolean {
+  const airline = (img.Airline || '').toLowerCase().trim();
+  return PRIVATE_KEYWORDS.some(kw => airline.includes(kw));
+}
+
 async function retry<T>(fn: () => Promise<T>, attempts = 3, backoffMs = 300): Promise<T> {
   let last: any;
   for (let i = 0; i < attempts; i++) {
@@ -265,7 +279,8 @@ export function chooseUsableImage(res: { Images?: RoowusImage[] } | null) {
     const hasLink = !!(i.Link && String(i.Link).trim().length > 0);
     const notPosted = !(i.photoId && posted.has(String(i.photoId)));
     const notMilitary = !isMilitary(i);
-    return hasImage && hasPhot && hasLink && notPosted && notMilitary;
+    const notPrivate = !isPrivate(i);
+    return hasImage && hasPhot && hasLink && notPosted && notMilitary && notPrivate;
   });
   if (withAttr.length > 0) return withAttr[Math.floor(Math.random() * withAttr.length)];
   const fallback = res.Images.filter(i => {
@@ -274,10 +289,11 @@ export function chooseUsableImage(res: { Images?: RoowusImage[] } | null) {
     const hasLink = !!(i.Link && String(i.Link).trim().length > 0);
     const notPosted = !(i.photoId && posted.has(String(i.photoId)));
     const notMilitary = !isMilitary(i);
-    return hasImage && hasLink && notPosted && notMilitary;
+    const notPrivate = !isPrivate(i);
+    return hasImage && hasLink && notPosted && notMilitary && notPrivate;
   });
   if (fallback.length > 0) return fallback[Math.floor(Math.random() * fallback.length)];
-  const anyUnposted = res.Images.filter(i => i && !(i.photoId && posted.has(String(i.photoId))) && !isMilitary(i));
+  const anyUnposted = res.Images.filter(i => i && !(i.photoId && posted.has(String(i.photoId))) && !isMilitary(i) && !isPrivate(i));
   if (anyUnposted.length > 0) return anyUnposted[Math.floor(Math.random() * anyUnposted.length)];
   return res.Images[Math.floor(Math.random() * res.Images.length)];
 }
