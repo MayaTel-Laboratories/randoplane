@@ -174,7 +174,7 @@ function normalizePhoto(p: any): RoowusImage {
   };
 }
 
-function isMilitary(img: RoowusImage): boolean {
+export function isMilitary(img: RoowusImage): boolean {
   const haystack = [img.Airline, img.Aircraft, img.Registration, img.Location]
     .filter(Boolean)
     .join(' ')
@@ -182,7 +182,7 @@ function isMilitary(img: RoowusImage): boolean {
   return MILITARY_KEYWORDS.some(kw => haystack.includes(kw));
 }
 
-function isPrivate(img: RoowusImage): boolean {
+export function isPrivate(img: RoowusImage): boolean {
   const airline = (img.Airline || '').toLowerCase().trim();
   return PRIVATE_KEYWORDS.some(kw => airline.includes(kw));
 }

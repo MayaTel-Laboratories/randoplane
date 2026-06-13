@@ -3,13 +3,13 @@ dotenv.config();
 import * as fs from 'fs';
 import { postImage as postToBluesky } from './clients/at';
 import { postImage as postToMastodon } from './clients/mastodon';
-import { fetchForKeyword, chooseUsableImage, downloadImageToTemp, composeCaption, recordPostedPhoto, SearchParams } from './clients/roowus';
+import { fetchForKeyword, chooseUsableImage, downloadImageToTemp, composeCaption, recordPostedPhoto, isMilitary, isPrivate, SearchParams } from './clients/roowus';
 
 const MANUFACTURERS = [
   'Concorde', 'Airbus', 'Antonov', 'BAC', 'BAe', 'Boeing', 'Bombardier',
   'COMAC', 'Convair', 'De Havilland', 'De Havilland Canada', 'Dornier',
   'Douglas', 'Embraer', 'Fairchild', 'Fokker', 'Ford', 'Harbin',
-  'Hawker Siddeley', 'Ilyushin', 'Lockheed', 'Martin', 'McDonnell Douglas',
+  'Hawker Siddeley', 'Ilyushin', 'Lockheed', 'McDonnell Douglas',
   'NAMC', 'SAAB', 'Tupolev', 'Vickers', 'Yakovlev'
 ];
 
@@ -116,7 +116,7 @@ const AIRLINES = [
 
   'Africa Express', 'Africa West', 'African Airlines International',
   'Air Afrique', 'Air Botswana', 'Air Burkina', 'Air Cameroon',
-  'Air Comoros', 'Air Congo', 'Air Djibouti',
+  'Air Comoros', 'Air Congo', 'Air Côte d'Ivoire', 'Air Djibouti',
   'Air Gabon', 'Air Ghana', 'Air Guinea', 'Air Ivoire',
   'Air Kenya', 'Air Lesotho', 'Air Madagascar', 'Air Malawi',
   'Air Mali', 'Air Mauritanie', 'Air Mozambique', 'Air Namibia',
@@ -145,7 +145,7 @@ const AIRLINES = [
   'Pakistan International Airlines', 'Peach Aviation', 'Regal Air',
   'Royal Brunei Airlines', 'S7 Airlines', 'Shandong Airlines',
   'Shenzhen Airlines', 'Sichuan Airlines', 'Silk Air', 'SpiceJet',
-  'Spring Airlines', 'SriLankan Airlines', 'Tigerair',
+  'Spring Airlines', 'SriLankan Airlines', 'T'way Air', 'Tigerair',
   'Transasia Airways', 'Uni Air', 'Vanilla Air', 'Vietjet Air',
   'Vladivostok Air', 'Wuhan Airlines', 'Xiamen Airlines', 'Yemenia',
 
@@ -248,7 +248,7 @@ async function runOnce() {
       try {
         const jp = await fetchForKeyword(fallbackParams, 10);
         lastRaw = jp?.raw;
-        const candidate = (jp?.Images || []).find((img: any) => img && ((img.Image && img.Image.trim()) || (img.Thumbnail && img.Thumbnail.trim())) && img.Link);
+        const candidate = (jp?.Images || []).find((img: any) => img && ((img.Image && img.Image.trim()) || (img.Thumbnail && img.Thumbnail.trim())) && img.Link && !isMilitary(img) && !isPrivate(img));
         if (candidate) {
           chosenImage = candidate;
           chosenKeyword = keyword;
