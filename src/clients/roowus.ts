@@ -295,7 +295,11 @@ export function chooseUsableImage(res: { Images?: RoowusImage[] } | null) {
   if (fallback.length > 0) return fallback[Math.floor(Math.random() * fallback.length)];
   const anyUnposted = res.Images.filter(i => i && !(i.photoId && posted.has(String(i.photoId))) && !isMilitary(i) && !isPrivate(i));
   if (anyUnposted.length > 0) return anyUnposted[Math.floor(Math.random() * anyUnposted.length)];
-  return res.Images[Math.floor(Math.random() * res.Images.length)];
+
+  const anyNonMilitaryNonPrivate = res.Images.filter(i => i && !isMilitary(i) && !isPrivate(i));
+  if (anyNonMilitaryNonPrivate.length > 0) return anyNonMilitaryNonPrivate[Math.floor(Math.random() * anyNonMilitaryNonPrivate.length)];
+
+  return null;
 }
 
 function sanitizeFilename(s: string) {
