@@ -95,6 +95,32 @@ function tryExtractImagesFromJson(json: any): Array<{ url: string; photographer?
   const seen = new Set<string>();
   return out.filter(o => { if (!o.url) return false; if (seen.has(o.url)) return false; seen.add(o.url); return true; });
 }
+async function fetchRegistrationFromPhotoPage(link: string): Promise<string | null> {
+  try {
+    const res = await fetch(link, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Referer': 'https://www.jetphotos.com/',
+      },
+    });
+    if (!res.ok) {
+      console.warn(`jetphotos: page fetch for registration failed (${res.status}) at ${link}`);
+      return null;
+    }
+    const html = await res.text();
+    const match = html.match(/\/registration\/([A-Z0-9-]{2,10})/i);
+    if (match && match[1]) {
+      return match[1].toUpperCase();
+    }
+    console.warn(`jetphotos: no /registration/ link found on ${link}`);
+    return null;
+  } catch (e) {
+    console.warn('jetphotos: error scraping registration from', link, e && (e as any).message ? (e as any).message : e);
+    return null;
+  }
+}
+
 export async function findImageForPosting(maxAttempts = Number(process.env.MAX_REG_ATTEMPTS || '12')): Promise<FoundResult | null> {
   const attempts = Math.max(1, Math.min(200, maxAttempts || 12));
   for (let i = 0; i < attempts; i++) {
@@ -115,9 +141,17 @@ export async function findImageForPosting(maxAttempts = Number(process.env.MAX_R
         const photographer = first.photographer || getField(raw, ['Photographer', 'photographer']);
         const link = first.link || getField(raw, ['Link', 'link', 'pageUrl', 'photoPageUrl']);
         const id = first.id || getField(raw, ['photoId', 'PhotoId', 'id', 'photo_id']);
-        const registration = isValidRegistration(registrationFromData) ? registrationFromData : null;
+        let registration = isValidRegistration(registrationFromData) ? registrationFromData : null;
+        if (!registration && link) {
+          console.log(`jetapi: no registration in JetAPI payload for ${gen}, scraping ${link}...`);
+          registration = await fetchRegistrationFromPhotoPage(link);
+        }
+        if (!registration) {
+          console.warn(`jetapi: could not confirm a real registration for ${gen}'s match; skipping candidate.`);
+          continue;
+        }
         return {
-          reg: registration || '',
+          reg: registration,
           imageUrl: first.url,
           info: {
             photographer: photographer || null,
@@ -126,7 +160,7 @@ export async function findImageForPosting(maxAttempts = Number(process.env.MAX_R
             raw: raw,
             aircraft: aircraft || null,
             location: location || null,
-            registration: registration || null,
+            registration: registration,
             date: date || null
           }
         };
