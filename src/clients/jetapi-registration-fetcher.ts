@@ -117,12 +117,6 @@ export async function findImageForPosting(maxAttempts = Number(process.env.MAX_R
         const link = first.link || getField(raw, ['Link', 'link', 'pageUrl', 'photoPageUrl']);
         const id = first.id || getField(raw, ['photoId', 'PhotoId', 'id', 'photo_id']);
         const airline = getField(raw, ['Airline', 'airline', 'Operator', 'operator']);
-        // NOTE: JetAPI's ?reg= search is fuzzy (a hit doesn't guarantee the
-        // photo's real registration matches what we searched for), and its
-        // response payload doesn't reliably include a real registration
-        // field either. We intentionally don't try to resolve/guess it
-        // anymore (scraping JetPhotos for it 403s) — the registration is
-        // simply left out of the caption downstream.
         const registration = isValidRegistration(registrationFromData) ? registrationFromData : null;
         return {
           reg: registration || '',

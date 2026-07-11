@@ -39,8 +39,9 @@ async function runOnce() {
     throw new Error(msg);
   }
   if (isMilitary(chosenImage) || isPrivate(chosenImage)) {
-    console.warn('selected image appears military/private; skipping post.');
-    return;
+    console.warn('selected image appears military/private; skipping post. Restarting lookup...');
+    await sleep(2000);
+    return await runOnce();
   }
   let downloadUrl: string | undefined = undefined;
   if (chosenImage.Image && String(chosenImage.Image).trim().length > 0) {
