@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { pipeline } from 'stream';
 import { promisify } from 'util';
+import { findImageForPosting } from './clients/jetapi-registration-fetcher';
 const pLimit = require('p-limit');
 const streamPipeline = promisify(pipeline);
 

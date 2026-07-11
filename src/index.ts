@@ -3,261 +3,35 @@ dotenv.config();
 import * as fs from 'fs';
 import { postImage as postToBluesky } from './clients/at';
 import { postImage as postToMastodon } from './clients/mastodon';
-import { fetchForKeyword, chooseUsableImage, downloadImageToTemp, composeCaption, recordPostedPhoto, isMilitary, isPrivate, SearchParams } from './clients/roowus';
-
-const MANUFACTURERS = [
-  'Concorde', 'Airbus', 'Antonov', 'BAC', 'BAe', 'Boeing', 'Bombardier',
-  'COMAC', 'Convair', 'De Havilland', 'De Havilland Canada', 'Dornier',
-  'Douglas', 'Embraer', 'Fairchild', 'Fokker', 'Ford', 'Harbin',
-  'Hawker Siddeley', 'Ilyushin', 'Lockheed', 'McDonnell Douglas',
-  'NAMC', 'SAAB', 'Tupolev', 'Vickers', 'Yakovlev'
-];
-
-const AIRLINES = [
-  'Aer Lingus', 'Aeroflot', 'Aeromexico', 'Aero California',
-  'Air Afrique', 'Air Algerie', 'Air Berlin', 'Air California',
-  'AirCal', 'Air Canada', 'Air China', 'Air Europe', 'Air Florida',
-  'Air France', 'Air India', 'Air Inter', 'Air Jamaica', 'Air Koryo',
-  'Air Lanka', 'Air Malta', 'Air Mauritius', 'Air Midwest',
-  'Air New England', 'Air New Zealand', 'Air Niugini', 'Air Pacific',
-  'Air Portugal', 'Air Seychelles', 'Air Tran Airways', 'Air Wisconsin',
-  'Air Zimbabwe', 'Alaska Airlines', 'Alitalia', 'All Nippon Airways',
-  'Allegheny Airlines', 'Aloha Airlines', 'Aloha Air Cargo',
-  'America West Airlines', 'American Airlines', 'American Eagle Airlines',
-  'American Flyers Airline', 'American Trans Air', 'Ansett Australia',
-  'Ariana Afghan Airlines', 'Arrow Air', 'Aspen Airways',
-  'Atlantic Southeast Airlines', 'Atlas Air', 'Austrian Airlines',
-  'Avianca', 'Aviateca', 'Avjet Corporation', 'Azul',
-  'Balkan Bulgarian Airlines', 'BEA', 'British European Airways', 'Braniff International Airways',
-  'Braniff', 'British Airways', 'British Caledonian', 'British Midland',
-  'British Overseas Airways Corporation', 'Business Express Airlines',
-  'Canadian Airlines', 'Canadian Pacific Air Lines', 'Capital Airlines',
-  'Capitol Air', 'Caribbean Atlantic Airlines', 'Cargolux', 'Cathay Pacific',
-  'Chautauqua Airlines', 'China Airlines', 'China Eastern', 'China Southern',
-  'Coastal Airways', 'Colgan Air', 'Comair', 'Condor',
-  'Continental Airlines', 'Continental Express', 'Copa Airlines', 'Cruzeiro do Sul',
-  'CSA Czechoslovak Airlines', 'Cyprus Airways', 'Cubana',
-  'Delta Air Lines', 'DHL Airways',
-  'Eastern Air Lines', 'EasyJet', 'Egyptair',
-  'Empire Airlines', 'Ethiopian Airlines', 'Evergreen International Airlines',
-  'Executive Airlines', 'Finnair', 'Florida West Airlines',
-  'Flying Tiger Line', 'Frontier Airlines', 'Frontier Horizon',
-  'Garuda Indonesia', 'Gemini Air Cargo', 'Grand Airways',
-  'Gulf Air', 'Hapag-Lloyd', 'Hawaiian Airlines',
-  'Horizon Air', 'Hughes Airwest', 'Iberia', 'Icelandair',
-  'Iran Air', 'Iraqi Airways', 'Japan Airlines', 'Japan Air System',
-  'JAT Yugoslav Airlines', 'Jet Airways', 'JetBlue Airways',
-  'Kenya Airways', 'KLM', 'Korean Air', 'Kuwait Airways',
-  'LACSA', 'Lake Central Airlines', 'LAN Chile', 'LATAM Airlines',
-  'Libyan Arab Airlines', 'Lloyd Aereo Boliviano', 'LOT Polish Airlines',
-  'Lufthansa', 'Mackey International Airlines',
-  'Malev Hungarian Airlines', 'Malaysian Airline System',
-  'Markair', 'Mesa Air', 'Mexicana', 'Metrojet', 'Midway Airlines',
-  'Midwest Airlines', 'Midwest Express Airlines', 'Middle East Airlines',
-  'Mohawk Airlines', 'Muse Air',
-  'National Airlines', 'National Jet America', 'New York Air',
-  'Nigerian Airways', 'North Central Airlines',
-  'Northeast Airlines', 'Northern Air Cargo', 'Northwest Airlines',
-  'Olympic Airways', 'Ozark Air Lines',
-  'Pacific Southwest Airlines', 'Pakistan International Airlines',
-  'Pan Am', 'Pan American World Airways',
-  'Peoples Express Airlines', 'Philippine Airlines', 'Piedmont Airlines',
-  'Precision Airlines', 'PSA', 'Qantas',
-  'Reeve Aleutian Airways', 'Republic Airlines', 'Rich International Airways',
-  'Royal Air Maroc', 'Royal Jordanian', 'Ryanair', 'Sabena',
-  'Saudi Arabian Airlines', 'Scandinavian Airlines', 'Singapore Airlines',
-  'SkyWest Airlines', 'South African Airways', 'Southeast Airlines',
-  'Southern Air Transport', 'Southwest Airlines',
-  'Spirit Airlines', 'Sun Country Airlines', 'Sunjet International',
-  'Sunworld International Airlines', 'Swissair', 'Syrian Arab Airlines',
-  'TAAG Angola Airlines', 'TAM Airlines', 'TAP Air Portugal',
-  'Texas Air Corporation', 'Texas International Airlines',
-  'Thai Airways', 'Tower Air', 'Trans Air',
-  'Trans International Airlines', 'Trans States Airlines',
-  'Trans World Airlines', 'Transamerica Airlines', 'Transavia',
-  'Tunis Air', 'Turkish Airlines',
-  'United Airlines', 'United Express', 'UPS Airlines',
-  'US Air', 'US Airways', 'USAir', 'UTA',
-  'Varig', 'VASP', 'Vietnam Airlines',
-  'Virgin America', 'Virgin Atlantic', 'Virgin Australia', 'Virgin Blue',
-  'Viva', 'VivaAerobus', 'Vanguard Airlines', 'ValuJet Airlines',
-  'Western Airlines', 'Western Pacific Airlines',
-  'Wien Air Alaska', 'World Airways', 'Yemen Airways',
-
-  'Access Air', 'Air Ambulance Network', 'Air Midwest Express', 'Air One',
-  'AirTran', 'Airnet Express', 'Alpine Air Express', 'American Central Airlines',
-  'American Connection', 'Ameriquest Airlines', 'ATA Airlines', 'Avair',
-  'Big Sky Airlines', 'Britt Airways', 'Burlington Air Express',
-  'Casino Express', 'Champlain Enterprises', 'Chicago Express Airlines',
-  'Comair Aviation Academy', 'CommutAir', 'Corporate Airlines',
-  'Crown Airways', 'Emerald Air', 'Express Airlines',
-  'Florida Express', 'Freedom Airlines', 'Great Lakes Airlines',
-  'Gulf Air Transport', 'Gulfstream International Airlines',
-  'Hageland Aviation', 'Hallmark Aviation', 'Harte-Hanks Air',
-  'Independence Air', 'InterAir', 'Island Air',
-  'Jetstream International', 'Key Air', 'Kitty Hawk Air Cargo',
-  'Lone Star Airlines', 'Midstates Airlines', 'Mississippi Valley Airlines',
-  'Morris Air', 'Mountain West Airlines', 'National Western Air',
-  'North American Airlines', 'Pacific Air Lines', 'PanAm Express',
-  'Provincetown-Boston Airline', 'Resort Air', 'Ryan International Airlines',
-  'Scenic Airlines', 'Sierra Pacific Airlines', 'Simmons Airlines',
-  'Southeast Express Regional Airlines', 'Southern Express',
-  'Sunaire Express', 'Sunbelt Airlines', 'Tennessee Airways',
-  'Trans-Colorado Airlines', 'Trans-Texas Airways', 'Tropical Airways',
-  'United Feeder Service', 'WestAir Commuter Airlines', 'Wings West Airlines',
-
-  'Adria Airways', 'Aer Arann', 'Aegean Airlines', 'Air Adriatic',
-  'Air Alfa', 'Air Exel', 'Air Holland', 'Air Liberté',
-  'Air Lithuania', 'Air Slovakia', 'Air Wales', 'Airtours International',
-  'Alpi Eagles', 'Aurigny Air Services', 'Austrian Arrows',
-  'Brit Air', 'Bulgarian Air Charter', 'City Jet',
-  'Crossair', 'Dan-Air', 'Dolomiti Air', 'Estonian Air',
-  'Eurowings', 'GB Airways', 'Hamburg Airlines',
-
-  'Africa Express', 'Africa West', 'African Airlines International',
-  'Air Afrique', 'Air Botswana', 'Air Burkina', 'Air Cameroon',
-  'Air Comoros', 'Air Congo', 'Air Djibouti',
-  'Air Gabon', 'Air Ghana', 'Air Guinea', 'Air Ivoire',
-  'Air Kenya', 'Air Lesotho', 'Air Madagascar', 'Air Malawi',
-  'Air Mali', 'Air Mauritanie', 'Air Mozambique', 'Air Namibia',
-  'Air Niger', 'Air Rwanda', 'Air Senegal', 'Air Seychelles',
-  'Air Sierra Leone', 'Air Somalia', 'Air Sudan', 'Air Tanzania',
-  'Air Uganda', 'Air Zaire', 'Afriqiyah Airways', 'Belleview Airlines',
-  'Cameroon Airlines', 'Eagle Aviation', 'East African Airways',
-  'Ethiopian Airlines', 'Gambia Bird', 'Ghana Airways',
-  'InterAir South Africa', 'Kenya Airways', 'Libyan Airlines',
-  'Nationwide Airlines', 'Rwandair', 'Sudan Airways',
-
-  'Air Asia', 'Air Bangladesh', 'Air Busan', 'Air Cambodia',
-  'Air Ceylon', 'Air Deccan', 'Air Guilin', 'Air Hong Kong',
-  'Air India Express', 'Air Indus', 'Air Jeju', 'Air Macau',
-  'Air Manas', 'Air Nepal', 'Air Pegasus', 'Air Philippines',
-  'Air Sahara', 'Air Sinai', 'Air Uzbekistan', 'AirAsia X',
-  'Ariana Afghan Airlines', 'Asiana Airlines', 'Bangkok Airways',
-  'Biman Bangladesh Airlines', 'Cebu Pacific', 'China Express Airlines',
-  'Chongqing Airlines', 'Dragonair', 'EVA Air', 'Far Eastern Air Transport',
-  'Firefly', 'Fuzhou Airlines', 'Go Air', 'Gulf Air',
-  'Hainan Airlines', 'Indigo', 'Iran Aseman Airlines', 'Jazeera Airways',
-  'Jet Star Asia', 'Jin Air', 'Juneyao Airlines', 'Kish Air',
-  'Lao Airlines', 'Lion Air', 'Mahan Air', 'Malaysia Airlines',
-  'Mandarin Airlines', 'Miat Mongolian Airlines', 'Myanmar Airways',
-  'Nepal Airlines', 'Nok Air', 'Oman Air', 'Orient Thai Airlines',
-  'Pakistan International Airlines', 'Peach Aviation', 'Regal Air',
-  'Royal Brunei Airlines', 'S7 Airlines', 'Shandong Airlines',
-  'Shenzhen Airlines', 'Sichuan Airlines', 'Silk Air', 'SpiceJet',
-  'Spring Airlines', 'SriLankan Airlines', 'Tigerair',
-  'Transasia Airways', 'Uni Air', 'Vanilla Air', 'Vietjet Air',
-  'Vladivostok Air', 'Wuhan Airlines', 'Xiamen Airlines', 'Yemenia',
-
-  'Air Caledonie', 'Air Caledonie International', 'Air Contractor',
-  'Air Fiji', 'Air Kiribati', 'Air Marshall Islands', 'Air Micronesia',
-  'Air Nauru', 'Air Nelson', 'Air New Guinea', 'Air Niugini',
-  'Air North Queensland', 'Air Pacific', 'Air Paradise International',
-  'Air Rarotonga', 'Air Samoa', 'Air Tahiti', 'Air Tahiti Nui',
-  'Air Tonga', 'Air Tungaru', 'Air Vanuatu', 'Airlines of Papua New Guinea',
-  'Airlines of Tasmania', 'Airlink', 'Airwork', 'Alliance Airlines',
-  'Ansett New Zealand', 'Ansett Queensland', 'Australia Asia Airlines',
-  'Australian Airlines', 'Barrier Air', 'Bismarck Airlines',
-  'Bond Air Services', 'Broome Airlines', 'Cathay Dragon',
-  'Cobham Aviation Services', 'Eastern Australia Airlines', 'Flight West Airlines',
-  'Freedom Air', 'Hazelton Airlines', 'Helicopter New Zealand',
-  'Impulse Airlines', 'Island Aviation Services', 'Jetstar',
-  'Kendell Airlines', 'Lloyd Aviation', 'Macair Airlines',
-  'Maersk Air Australia', 'Mount Cook Airlines', 'National Jet Systems',
-  'Norfolk Air', 'North Queensland Airlines', 'Nowra Airlines',
-  'Pacific Blue', 'Polynesian Airlines', 'Precision Air',
-  'Rex Regional Express', 'Skywest Airlines Australia', 'Solomon Airlines',
-  'Sounds Air', 'South Pacific Island Airways', 'Sunstate Airlines',
-  'Trans Australia Airlines', 'Tropic Air', 'Virgin Australia Regional',
-  'Whitsunday Airlines',
-];
-
-const YEARS: string[] = [];
-for (let y = 1930; y <= new Date().getFullYear(); y++) {
-  YEARS.push(String(y));
-}
+import { downloadImageToTemp, composeCaption, recordPostedPhoto, isMilitary, isPrivate } from './clients/roowus';
+import { findImageForPosting } from './clients/jetapi-registration-fetcher';
 
 function sleep(ms: number) {
   return new Promise((res) => setTimeout(res, ms));
-}
-
-function pickRandom<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-
-function buildSearchParams(): SearchParams {
-  const include = {
-    manufacturer: Math.random() < 0.5,
-    airline:      Math.random() < 0.5,
-    year:         Math.random() < 0.4,
-  };
-
-  if (!include.manufacturer && !include.airline && !include.year) {
-    const roll = Math.random();
-    if (roll < 0.4)      include.manufacturer = true;
-    else if (roll < 0.8) include.airline = true;
-    else                 include.year = true;
-  }
-
-  const params: SearchParams = {};
-  if (include.manufacturer) params.manufacturer = pickRandom(MANUFACTURERS);
-  if (include.airline)      params.airline = pickRandom(AIRLINES);
-  if (include.year)         params.year = pickRandom(YEARS);
-
-  return params;
 }
 
 async function runOnce() {
   const dryRun = (process.env.POST_DRY_RUN || '').toLowerCase().trim();
   const isDryRun = dryRun === '1' || dryRun === 'true' || dryRun === 'yes';
 
-  let chosenImage: any = null;
-  let chosenKeyword = '';
-  let lastRaw: any = null;
-
-  for (let attempt = 0; attempt < 8; attempt++) {
-    const params = buildSearchParams();
-    const keyword = [params.manufacturer, params.airline, params.year].filter(Boolean).join(' / ');
-    const photos = 5 * (1 + Math.floor(attempt / 2));
-    console.log(`attempt ${attempt + 1}/8: querying for "${keyword}" (photos=${photos})`);
-    let jp;
-    try {
-      jp = await fetchForKeyword(params, photos);
-      lastRaw = jp?.raw;
-    } catch (e) {
-      console.warn(`fetch for "${keyword}" failed:`, (e && (e as any).message) ? (e as any).message : e);
-      continue;
-    }
-    const available = Array.isArray(jp?.Images) ? jp.Images.length : 0;
-    console.log(`returned ${available} images for "${keyword}"`);
-    const usable = chooseUsableImage(jp);
-    if (usable) {
-      chosenImage = usable;
-      chosenKeyword = keyword;
-      break;
-    }
-    console.log(`apparently "${keyword}" was a bad combo, trying again...`);
-    if (attempt < 7) await sleep(3000);
+  console.log('trying registration-based lookup via JetAPI...');
+  const regResult = await findImageForPosting(Number(process.env.MAX_REG_ATTEMPTS || '12'));
+  if (!regResult) {
+    console.warn('registration-based lookup found nothing.');
+    throw new Error('i got nothing, sorry');
   }
 
-  if (!chosenImage) {
-    console.log('no image matched strict filter; trying again but looser...');
-    for (let i = 0; i < 3; i++) {
-      const fallbackParams = buildSearchParams();
-      const keyword = [fallbackParams.manufacturer, fallbackParams.airline, fallbackParams.year].filter(Boolean).join(' / ');
-      try {
-        const jp = await fetchForKeyword(fallbackParams, 10);
-        lastRaw = jp?.raw;
-        const candidate = (jp?.Images || []).find((img: any) => img && ((img.Image && img.Image.trim()) || (img.Thumbnail && img.Thumbnail.trim())) && img.Link && !isMilitary(img) && !isPrivate(img));
-        if (candidate) {
-          chosenImage = candidate;
-          chosenKeyword = keyword;
-          console.log(`found relaxed candidate for "${keyword}".`);
-          break;
-        }
-      } catch (e) {}
-    }
-  }
+  const chosenKeyword = regResult.reg;
+  const chosenImage = {
+    Image: regResult.imageUrl,
+    Thumbnail: regResult.imageUrl,
+    Photographer: regResult.info?.photographer || '',
+    Link: regResult.info?.link || '',
+    Registration: regResult.reg,
+    photoId: regResult.info?.id || regResult.reg,
+    _jetapi_raw: regResult.info?.raw,
+  };
+  const lastRaw = regResult.info?.raw;
 
   if (!chosenImage) {
     if (lastRaw) {
