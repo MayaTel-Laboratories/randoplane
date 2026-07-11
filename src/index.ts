@@ -21,7 +21,9 @@ async function runOnce() {
     Thumbnail: regResult.imageUrl,
     Photographer: regResult.info?.photographer || '',
     Link: regResult.info?.link || '',
-    Registration: regResult.reg,
+    Registration: regResult.info?.registration || regResult.reg,
+    Aircraft: regResult.info?.aircraft || '',
+    Location: regResult.info?.location || '',
     photoId: regResult.info?.id || regResult.reg,
     _jetapi_raw: regResult.info?.raw,
   };
@@ -35,9 +37,7 @@ async function runOnce() {
     throw new Error(msg);
   }
   if (!chosenImage.Link) {
-    const missing = ['Link'].filter(Boolean).join(', ');
-    console.warn(`selected image for "${chosenKeyword}" is missing metadata: ${missing} — not posting.`);
-    return;
+    console.warn(`selected image for "${chosenKeyword}" is missing Link — proceeding to download if possible.`);
   }
   let downloadUrl: string | undefined = undefined;
   if (chosenImage.Image && String(chosenImage.Image).trim().length > 0) {

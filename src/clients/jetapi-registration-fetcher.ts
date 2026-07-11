@@ -1,5 +1,17 @@
 import { queryJetApiByRegistration } from './jetapi-client';
-type FoundResult = { reg: string; imageUrl: string; info: { photographer?: string | null; link?: string | null; id?: string | null; raw?: any } };
+type FoundResult = {
+  reg: string;
+  imageUrl: string;
+  info: {
+    photographer?: string | null;
+    link?: string | null;
+    id?: string | null;
+    raw?: any;
+    aircraft?: string | null;
+    location?: string | null;
+    registration?: string | null;
+  };
+};
 function randInt(min: number, max: number) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 function pick<T>(arr: T[]) { return arr[Math.floor(Math.random() * arr.length)]; }
 function genUS(): string { const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'; const len = randInt(1, 5); let s = 'N'; for (let i = 0; i < len; i++) s += chars.charAt(Math.floor(Math.random() * chars.length)); return s; }
@@ -15,7 +27,17 @@ function genJP(): string { const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 function genNL(): string { const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'; let s = 'PH-'; for (let i = 0; i < 3; i++) s += letters.charAt(Math.floor(Math.random() * letters.length)); return s; }
 const generators: Array<() => string> = [ genUS, genUS, genUS, genUS, genUK, genUK, genDE, genFR, genCA, genAU, genIT, genAT, genBR, genJP, genNL ];
 function genRegistrationForAttempt(): string { return pick(generators)(); }
-function tryExtractImagesFromJson(json: any): Array<{ url: string; photographer?: string; link?: string; id?: string }> {
+function getField(obj: any, keys: string[]) {
+  if (!obj || typeof obj !== 'object') return undefined;
+  for (const k of keys) {
+    const v = obj[k];
+    if (v === null || v === undefined) continue;
+    const s = String(v).trim();
+    if (s.length > 0) return s;
+  }
+  return undefined;
+}
+function tryExtractImagesFromJson(json: any): Array<{ url: string; photographer?: string; link?: string; id?: string; raw?: any }> {
   if (!json) return [];
   const candidates: any[] = [];
   if (Array.isArray(json.photos)) candidates.push(...json.photos);
@@ -28,6 +50,7 @@ function tryExtractImagesFromJson(json: any): Array<{ url: string; photographer?
   if (json.JetPhotos && typeof json.JetPhotos === 'object' && !Array.isArray(json.JetPhotos)) {
     const jp = json.JetPhotos;
     if (Array.isArray(jp.Images)) candidates.push(...jp.Images);
+    if (Array.isArray((jp as any).photos)) candidates.push(...(jp as any).photos);
   }
   if (json.image || json.url || json.photo) candidates.push(json);
   function walk(obj: any) {
@@ -39,7 +62,7 @@ function tryExtractImagesFromJson(json: any): Array<{ url: string; photographer?
     else { for (const k of keys) { try { walk(obj[k]); } catch {} } }
   }
   if (candidates.length === 0) walk(json);
-  const out: Array<{ url: string; photographer?: string; link?: string; id?: string }> = [];
+  const out: Array<{ url: string; photographer?: string; link?: string; id?: string; raw?: any }> = [];
   for (const c of candidates) {
     if (!c || typeof c !== 'object') continue;
     const urlCandidates = [
@@ -49,11 +72,11 @@ function tryExtractImagesFromJson(json: any): Array<{ url: string; photographer?
     ];
     const url = (urlCandidates.find(Boolean) || '')?.toString?.().trim();
     if (!url) continue;
-    const photographer = (c.photographer || c.Photographer || c.author || c.photographerName || c.PhotographerName || c.by)?.toString?.().trim();
-    const link = (c.link || c.Link || c.pageUrl || c.pageURL || c.photoPageUrl || c.photoPage)?.toString?.().trim();
-    const id = (c.photoId || c.PhotoId || c.id || c.photo_id)?.toString?.().trim();
+    const photographer = getField(c, ['photographer', 'Photographer', 'author', 'photographerName', 'PhotographerName', 'by']);
+    const link = getField(c, ['link', 'Link', 'pageUrl', 'pageURL', 'photoPageUrl', 'photoPage']);
+    const id = getField(c, ['photoId', 'PhotoId', 'id', 'photo_id']);
     if (!/^https?:\/\//i.test(url)) continue;
-    out.push({ url, photographer, link, id });
+    out.push({ url, photographer: photographer || undefined, link: link || undefined, id: id || undefined, raw: c });
   }
   const seen = new Set<string>();
   return out.filter(o => { if (!o.url) return false; if (seen.has(o.url)) return false; seen.add(o.url); return true; });
@@ -70,7 +93,26 @@ export async function findImageForPosting(maxAttempts = Number(process.env.MAX_R
       console.log(`jetapi: extracted ${imgs.length} image candidates for ${reg}`);
       if (imgs.length > 0) {
         const first = imgs[0];
-        return { reg, imageUrl: first.url, info: { photographer: first.photographer || null, link: first.link || null, id: first.id || null, raw: json } };
+        const raw = first.raw || json;
+        const aircraft = getField(raw, ['Aircraft', 'aircraft', 'AircraftType', 'Model', 'model']);
+        const location = getField(raw, ['Location', 'location', 'locationName', 'LocationName', 'Airport']);
+        const registrationFromData = getField(raw, ['Registration', 'Reg', 'registration', 'reg', 'tailNumber', 'tail_number']);
+        const photographer = first.photographer || getField(raw, ['Photographer', 'photographer']);
+        const link = first.link || getField(raw, ['Link', 'link', 'pageUrl', 'photoPageUrl']);
+        const id = first.id || getField(raw, ['photoId', 'PhotoId', 'id', 'photo_id']);
+        return {
+          reg,
+          imageUrl: first.url,
+          info: {
+            photographer: photographer || null,
+            link: link || null,
+            id: id || null,
+            raw: raw,
+            aircraft: aircraft || null,
+            location: location || null,
+            registration: registrationFromData || null
+          }
+        };
       }
     } catch (e) {
       console.warn('jetapi: unexpected error during reg attempt', e && (e as any).message ? (e as any).message : e);
