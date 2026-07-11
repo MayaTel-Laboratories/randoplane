@@ -122,8 +122,10 @@ async function runOnce() {
         await sleep(10000);
         continue;
       } else {
-        console.error('no more retries. run the workflow again?');
-        process.exit(0);
+        console.error('no more retries. trying again?');
+        await sleep(2000);
+        return await runOnce();
+        }
       }
     }
   }
