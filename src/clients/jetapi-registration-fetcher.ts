@@ -49,9 +49,9 @@ function tryExtractImagesFromJson(json: any): Array<{ url: string; photographer?
     ];
     const url = (urlCandidates.find(Boolean) || '')?.toString?.().trim();
     if (!url) continue;
-    const photographer = (c.photographer || c.author || c.photographerName || c.by)?.toString?.().trim();
-    const link = (c.link || c.pageUrl || c.pageURL || c.photoPageUrl || c.photoPage || c.Link)?.toString?.().trim();
-    const id = (c.photoId || c.id || c.photo_id)?.toString?.().trim();
+    const photographer = (c.photographer || c.Photographer || c.author || c.photographerName || c.PhotographerName || c.by)?.toString?.().trim();
+    const link = (c.link || c.Link || c.pageUrl || c.pageURL || c.photoPageUrl || c.photoPage)?.toString?.().trim();
+    const id = (c.photoId || c.PhotoId || c.id || c.photo_id)?.toString?.().trim();
     if (!/^https?:\/\//i.test(url)) continue;
     out.push({ url, photographer, link, id });
   }
