@@ -1,7 +1,6 @@
 import * as fs from 'fs';
 import { BskyAgent } from '@atproto/api';
 import * as sizeOf from 'buffer-image-size';
-import { findImageForPosting } from './clients/jetapi-registration-fetcher';
 
 const BSKY_MAX_BYTES = 1900000;
 
