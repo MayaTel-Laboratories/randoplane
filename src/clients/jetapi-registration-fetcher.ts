@@ -19,20 +19,38 @@ function tryExtractImagesFromJson(json: any): Array<{ url: string; photographer?
   if (!json) return [];
   const candidates: any[] = [];
   if (Array.isArray(json.photos)) candidates.push(...json.photos);
+  if (Array.isArray(json.Images)) candidates.push(...json.Images);
   if (Array.isArray(json.images)) candidates.push(...json.images);
   if (Array.isArray(json.data)) candidates.push(...json.data);
   if (Array.isArray(json.results)) candidates.push(...json.results);
+  if (json.JetPhotos && Array.isArray(json.JetPhotos.Images)) candidates.push(...json.JetPhotos.Images);
+  if (json.JetPhotos && Array.isArray((json.JetPhotos as any).photos)) candidates.push(...(json.JetPhotos as any).photos);
+  if (json.JetPhotos && typeof json.JetPhotos === 'object' && !Array.isArray(json.JetPhotos)) {
+    const jp = json.JetPhotos;
+    if (Array.isArray(jp.Images)) candidates.push(...jp.Images);
+  }
   if (json.image || json.url || json.photo) candidates.push(json);
-  function walk(obj: any) { if (!obj || typeof obj !== 'object') return; if (Array.isArray(obj)) { for (const el of obj) walk(el); return; } const keys = Object.keys(obj); const hasUrl = keys.some(k => /^(image|img|url|photo|src)/i.test(k)); if (hasUrl) candidates.push(obj); else { for (const k of keys) { try { walk(obj[k]); } catch {} } } }
+  function walk(obj: any) {
+    if (!obj || typeof obj !== 'object') return;
+    if (Array.isArray(obj)) { for (const el of obj) walk(el); return; }
+    const keys = Object.keys(obj);
+    const hasUrl = keys.some(k => /^(image|img|url|photo|src)/i.test(k));
+    if (hasUrl) candidates.push(obj);
+    else { for (const k of keys) { try { walk(obj[k]); } catch {} } }
+  }
   if (candidates.length === 0) walk(json);
   const out: Array<{ url: string; photographer?: string; link?: string; id?: string }> = [];
   for (const c of candidates) {
     if (!c || typeof c !== 'object') continue;
-    const urlCandidates = [ c.image, c.Image, c.url, c.Url, c.photo, c.photo_url, c.imageUrl, c.fullUrl, (c.urls && c.urls.full), (c.urls && c.urls.large), (c.urls && c.urls.original), (c.urls && c.urls.fullsize) ];
+    const urlCandidates = [
+      c.image, c.Image, c.url, c.Url, c.photo, c.photo_url, c.imageUrl, c.fullUrl,
+      (c.urls && c.urls.full), (c.urls && c.urls.large), (c.urls && c.urls.original), (c.urls && c.urls.fullsize),
+      c.Thumbnail, c.thumbnail, c.thumb
+    ];
     const url = (urlCandidates.find(Boolean) || '')?.toString?.().trim();
     if (!url) continue;
     const photographer = (c.photographer || c.author || c.photographerName || c.by)?.toString?.().trim();
-    const link = (c.link || c.pageUrl || c.pageURL || c.photoPageUrl || c.photoPage)?.toString?.().trim();
+    const link = (c.link || c.pageUrl || c.pageURL || c.photoPageUrl || c.photoPage || c.Link)?.toString?.().trim();
     const id = (c.photoId || c.id || c.photo_id)?.toString?.().trim();
     if (!/^https?:\/\//i.test(url)) continue;
     out.push({ url, photographer, link, id });
@@ -57,7 +75,4 @@ export async function findImageForPosting(maxAttempts = Number(process.env.MAX_R
     } catch (e) {
       console.warn('jetapi: unexpected error during reg attempt', e && (e as any).message ? (e as any).message : e);
     }
-    await new Promise((r) => setTimeout(r, 250 + Math.floor(Math.random() * 400)));
-  }
-  return null;
-}
+    await new Promise((r) => setTimeout(r, 250
