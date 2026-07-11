@@ -15,16 +15,17 @@ async function runOnce() {
     console.warn('registration-based lookup found nothing.');
     throw new Error('i got nothing, sorry');
   }
-  const chosenKeyword = regResult.reg;
-  const chosenImage = {
+  const chosenKeyword = regResult.info?.registration || regResult.reg || '';
+  const chosenImage: any = {
     Image: regResult.imageUrl,
     Thumbnail: regResult.imageUrl,
     Photographer: regResult.info?.photographer || '',
     Link: regResult.info?.link || '',
-    Registration: regResult.info?.registration || regResult.reg,
+    Registration: regResult.info?.registration || '',
     Aircraft: regResult.info?.aircraft || '',
     Location: regResult.info?.location || '',
-    photoId: regResult.info?.id || regResult.reg,
+    DateTaken: regResult.info?.date || '',
+    photoId: regResult.info?.id || undefined,
     _jetapi_raw: regResult.info?.raw,
   };
   const lastRaw = regResult.info?.raw;
@@ -36,8 +37,9 @@ async function runOnce() {
     console.warn(msg);
     throw new Error(msg);
   }
-  if (!chosenImage.Link) {
-    console.warn(`selected image for "${chosenKeyword}" is missing Link — proceeding to download if possible.`);
+  if (isMilitary(chosenImage) || isPrivate(chosenImage)) {
+    console.warn('selected image appears military/private; skipping post.');
+    return;
   }
   let downloadUrl: string | undefined = undefined;
   if (chosenImage.Image && String(chosenImage.Image).trim().length > 0) {
@@ -69,17 +71,27 @@ async function runOnce() {
     const postOptions = { path: tmpPath, text: captionObj.text, link: chosenImage.Link };
     const results = await Promise.allSettled([postToBluesky(postOptions), postToMastodon(postOptions)]);
     const blueskyResult = results[0];
+    const mastodonResult = results[1];
     if (blueskyResult && blueskyResult.status === 'fulfilled') {
       try {
         if (chosenImage?.photoId) {
           recordPostedPhoto(chosenImage.photoId);
           console.log('recorded photo id:', chosenImage.photoId);
         } else {
-          console.log('no photo id on chosen image; skipping writing it down...');
+          console.log('no explicit photo id returned; not recording.');
         }
       } catch (e) {
         console.warn('failed to record posted photo:', e);
       }
+    } else {
+      if (blueskyResult && blueskyResult.status === 'rejected') {
+        console.error('Bluesky post failed:', (blueskyResult as PromiseRejectedResult).reason);
+      } else {
+        console.warn('Bluesky post did not return a result.');
+      }
+    }
+    if (mastodonResult && mastodonResult.status === 'rejected') {
+      console.error('Mastodon post failed:', (mastodonResult as PromiseRejectedResult).reason);
     }
     const failures = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
     if (failures.length > 0) {

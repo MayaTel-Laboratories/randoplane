@@ -98,13 +98,13 @@ function tryExtractImagesFromJson(json: any): Array<{ url: string; photographer?
 export async function findImageForPosting(maxAttempts = Number(process.env.MAX_REG_ATTEMPTS || '12')): Promise<FoundResult | null> {
   const attempts = Math.max(1, Math.min(200, maxAttempts || 12));
   for (let i = 0; i < attempts; i++) {
-    const reg = genRegistrationForAttempt();
-    console.log(`jetapi: trying generated reg (${i + 1}/${attempts}): ${reg}`);
+    const gen = genRegistrationForAttempt();
+    console.log(`jetapi: trying generated reg (${i + 1}/${attempts}): ${gen}`);
     try {
-      const json = await queryJetApiByRegistration(reg, 3, 8000);
-      if (!json) { console.log(`jetapi: no json for ${reg}`); await new Promise(r => setTimeout(r, 200 + Math.floor(Math.random() * 300))); continue; }
+      const json = await queryJetApiByRegistration(gen, 3, 8000);
+      if (!json) { console.log(`jetapi: no json for ${gen}`); await new Promise(r => setTimeout(r, 200 + Math.floor(Math.random() * 300))); continue; }
       const imgs = tryExtractImagesFromJson(json);
-      console.log(`jetapi: extracted ${imgs.length} image candidates for ${reg}`);
+      console.log(`jetapi: extracted ${imgs.length} image candidates for ${gen}`);
       if (imgs.length > 0) {
         const first = imgs[0];
         const raw = first.raw || json;
@@ -117,7 +117,7 @@ export async function findImageForPosting(maxAttempts = Number(process.env.MAX_R
         const id = first.id || getField(raw, ['photoId', 'PhotoId', 'id', 'photo_id']);
         const registration = isValidRegistration(registrationFromData) ? registrationFromData : null;
         return {
-          reg,
+          reg: registration || '',
           imageUrl: first.url,
           info: {
             photographer: photographer || null,
