@@ -10,6 +10,7 @@ type FoundResult = {
     aircraft?: string | null;
     location?: string | null;
     registration?: string | null;
+    date?: string | null;
   };
 };
 function randInt(min: number, max: number) { return Math.floor(Math.random() * (max - min + 1)) + min; }
@@ -36,6 +37,19 @@ function getField(obj: any, keys: string[]) {
     if (s.length > 0) return s;
   }
   return undefined;
+}
+function isValidRegistration(candidate?: string | null): boolean {
+  if (!candidate) return false;
+  const s = candidate.trim();
+  const patterns = [
+    /^N[0-9A-Z]{1,5}$/i,
+    /^G-?[0-9A-Z]{1,4}$/i,
+    /^OE-?[A-Z]{3}$/i,
+    /^C-[FG][A-Z]{3}$/i,
+    /^[A-Z]{1,2}-[A-Z0-9]{3,4}$/i,
+    /^[A-Z]{1,2}[A-Z0-9]{3,4}$/i
+  ];
+  return patterns.some(rx => rx.test(s));
 }
 function tryExtractImagesFromJson(json: any): Array<{ url: string; photographer?: string; link?: string; id?: string; raw?: any }> {
   if (!json) return [];
@@ -97,9 +111,11 @@ export async function findImageForPosting(maxAttempts = Number(process.env.MAX_R
         const aircraft = getField(raw, ['Aircraft', 'aircraft', 'AircraftType', 'Model', 'model']);
         const location = getField(raw, ['Location', 'location', 'locationName', 'LocationName', 'Airport']);
         const registrationFromData = getField(raw, ['Registration', 'Reg', 'registration', 'reg', 'tailNumber', 'tail_number']);
+        const date = getField(raw, ['DateTaken', 'DateUploaded', 'date', 'Taken', 'uploadedDate']);
         const photographer = first.photographer || getField(raw, ['Photographer', 'photographer']);
         const link = first.link || getField(raw, ['Link', 'link', 'pageUrl', 'photoPageUrl']);
         const id = first.id || getField(raw, ['photoId', 'PhotoId', 'id', 'photo_id']);
+        const registration = isValidRegistration(registrationFromData) ? registrationFromData : null;
         return {
           reg,
           imageUrl: first.url,
@@ -110,7 +126,8 @@ export async function findImageForPosting(maxAttempts = Number(process.env.MAX_R
             raw: raw,
             aircraft: aircraft || null,
             location: location || null,
-            registration: registrationFromData || null
+            registration: registration || null,
+            date: date || null
           }
         };
       }

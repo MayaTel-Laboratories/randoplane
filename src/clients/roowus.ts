@@ -126,7 +126,7 @@ function cleanField(v: any): string | undefined {
 
 function cleanRegistration(v: string | undefined): string | undefined {
   if (!v) return undefined;
-  const s = v.split(' ')[0].trim().toLowerCase();
+  const s = v.split(' ')[0].trim();
   if (!s || s === 'photos' || s === 'unknown' || s === 'n/a') return undefined;
   return v.split(' ')[0].trim();
 }
@@ -157,7 +157,7 @@ function normalizePhoto(p: any): RoowusImage {
     : undefined;
   const airline = cleanField(p.airline ?? p.airlineName);
   const registration = cleanRegistration(cleanField(p.registration ?? p.reg ?? p.tailNumber ?? p.tail_number));
-  const when = cleanField(p.year ?? p.taken_at ?? p.photoDate ?? p.uploadedDate);
+  const when = cleanField(p.year ?? p.taken_at ?? p.photoDate ?? p.uploadedDate ?? p.DateTaken ?? p.DateUploaded);
   const location = cleanField(p.location ?? p.airport ?? p.locationName ?? p.location_full);
   const photoId = cleanField(p.photoId ?? p.id ?? p.photo_id);
   return {
@@ -183,7 +183,7 @@ export function isMilitary(img: RoowusImage): boolean {
 }
 
 export function isPrivate(img: RoowusImage): boolean {
-  const airline = (img.Airline || '').toLowerCase().trim();
+  const airline = (img?.Airline || '').toLowerCase().trim();
   return PRIVATE_KEYWORDS.some(kw => airline.includes(kw));
 }
 
@@ -323,36 +323,68 @@ export async function downloadImageToTemp(url: string, hint = 'image'): Promise<
   return outPath;
 }
 
+function icaoPrefixToCountry(prefix: string): string | undefined {
+  if (!prefix) return undefined;
+  const p = prefix.toUpperCase();
+  const map: Record<string, string> = {
+    LO: 'Austria',
+    EG: 'United Kingdom',
+    LF: 'France',
+    ED: 'Germany',
+    EH: 'Netherlands',
+    LK: 'Czech Republic',
+    SP: 'Poland',
+    EI: 'Ireland',
+    OM: 'United Arab Emirates',
+    SB: 'Brazil',
+    RJ: 'Japan',
+    RJAA: 'Japan',
+    RK: 'South Korea',
+    CY: 'Canada',
+    C: 'Canada',
+    K: 'USA',
+  };
+  for (const key of Object.keys(map)) {
+    if (p.startsWith(key)) return map[key];
+  }
+  return undefined;
+}
+
 function parseLocation(location: string): { name: string; country: string } {
   const raw = location.trim();
-
   const normalised = raw.replace(/ – /g, ' - ');
-  const dashParts = normalised.split(' - ');
-  const namePart = dashParts[0].trim();
-
+  const dashParts = normalised.split(' - ').map(s => s.trim()).filter(Boolean);
+  const namePart = dashParts[0] || '';
   const commaIdx = namePart.indexOf(',');
   const name = commaIdx !== -1 ? namePart.slice(0, commaIdx).trim() : namePart;
-
   let country = '';
   if (dashParts.length >= 2) {
     const afterFirst = dashParts[1].trim();
-    const commaInAfter = afterFirst.indexOf(',');
-    const candidate = commaInAfter !== -1 ? afterFirst.slice(commaInAfter + 1).trim() : afterFirst;
-    if (candidate.toLowerCase() === 'usa' || candidate.toLowerCase() === 'united states') {
-      const state = dashParts.length >= 3 ? dashParts[2].trim() : '';
-      country = state ? `${state}, USA` : 'USA';
+    const codeCandidate = afterFirst.replace(/\s+/g, '').toUpperCase();
+    if (/^[A-Z]{3,4}$/.test(codeCandidate)) {
+      const mapped = icaoPrefixToCountry(codeCandidate);
+      if (mapped) {
+        country = mapped;
+      } else {
+        country = ''; // prefer not to show raw code if we can't map it
+      }
     } else {
-      country = candidate;
+      const commaInAfter = afterFirst.indexOf(',');
+      const candidate = commaInAfter !== -1 ? afterFirst.slice(commaInAfter + 1).trim() : afterFirst;
+      if (candidate.toLowerCase() === 'usa' || candidate.toLowerCase() === 'united states') {
+        const state = dashParts.length >= 3 ? dashParts[2].trim() : '';
+        country = state ? `${state}, USA` : 'USA';
+      } else {
+        country = candidate;
+      }
     }
   }
-
   if (!country && dashParts.length === 1) {
     const commaIdx2 = raw.indexOf(',');
     if (commaIdx2 !== -1) {
       country = raw.slice(commaIdx2 + 1).trim();
     }
   }
-
   return { name, country };
 }
 
@@ -372,37 +404,57 @@ export function composeCaption(regOrKeyword: string, img: RoowusImage) {
       ? `${parsedLocation.name} (${parsedLocation.country})`
       : parsedLocation.name
     : '';
-  const when = (img?.DateTaken || '').toString().trim();
+  const whenRaw = (img?.DateTaken || img?.DateUploaded || '').toString().trim();
+  let when = whenRaw;
+  let year = '';
+  let month = '';
+  let day = '';
+  if (whenRaw) {
+    if (/^\d{4}(-\d{2}(-\d{2})?)?$/.test(whenRaw)) {
+      const parts = whenRaw.split('-');
+      year = parts[0] || '';
+      month = parts[1] || '00';
+      day = parts[2] || '00';
+    } else {
+      const parsed = Date.parse(whenRaw);
+      if (!isNaN(parsed)) {
+        const d = new Date(parsed);
+        year = String(d.getFullYear());
+        month = String(d.getMonth() + 1).padStart(2, '0');
+        day = String(d.getDate()).padStart(2, '0');
+      } else {
+        const m = whenRaw.match(/(\d{4})/);
+        if (m) { year = m[1]; month = '00'; day = '00'; }
+      }
+    }
+  }
   const photographer = (img?.Photographer || '').toString().trim();
-
-  const subjectWord = aircraft || regOrKeyword;
-  const article = aOrAn(subjectWord);
-
+  const subjectWord = aircraft || regOrKeyword || 'NA';
+  const article = aOrAn(subjectWord || '');
   let main = `${article} ${subjectWord}`;
   if (registration) {
     main += `, registered ${registration}`;
   } else {
-    main += `, with an unknown registration`;
+    main += `, registered NA`;
   }
-  if (airline) main += ` and operated by ${airline}`;
+  if (airline) main += `, and operated by ${airline}`;
   if (location) main += `, at ${location}`;
   if (when) {
-    const parts = when.split('-');
-    const year = parts[0] || '';
-    const month = parts[1] || '00';
-    const day = parts[2] || '00';
-    if (month === '00') {
+    if (year && month === '00') {
       main += `, on an unknown date in ${year}`;
-    } else if (day === '00') {
-      const monthName = new Intl.DateTimeFormat('en-US', { month: 'long' }).format(new Date(`${year}-${month}-15T12:00:00`));
-      main += `, in ${monthName} ${year}`;
+    } else if (year && month && day && month !== '00' && day !== '00') {
+      try {
+        const dateObj = new Date(`${year}-${month}-${day}T12:00:00`);
+        const formatted = new Intl.DateTimeFormat('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }).format(dateObj);
+        main += `, on ${formatted}`;
+      } catch {
+        // fallback to raw when string
+        main += `, on ${when}`;
+      }
     } else {
-      const dateObj = new Date(`${year}-${month}-${day}T12:00:00`);
-      const formatted = new Intl.DateTimeFormat('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }).format(dateObj);
-      main += `, on ${formatted}`;
+      main += `, on ${when}`;
     }
   }
-
   const photoBy = photographer ? `Photo by ${photographer} on JetPhotos:` : `Photo on JetPhotos:`;
   const link = img?.Link ? String(img.Link).trim() : '';
   const captionText = link ? `${main}.\n\n${photoBy}\n${link}.` : `${main}. ${photoBy}`;
