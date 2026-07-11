@@ -75,4 +75,7 @@ export async function findImageForPosting(maxAttempts = Number(process.env.MAX_R
     } catch (e) {
       console.warn('jetapi: unexpected error during reg attempt', e && (e as any).message ? (e as any).message : e);
     }
-    await new Promise((r) => setTimeout(r, 250
+    await new Promise((r) => setTimeout(r, 250 + Math.floor(Math.random() * 400)));
+  }
+  return null;
+}
