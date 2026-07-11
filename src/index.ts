@@ -39,7 +39,7 @@ async function runOnce() {
     throw new Error(msg);
   }
   if (isMilitary(chosenImage) || isPrivate(chosenImage)) {
-    console.warn('selected image appears military/private; skipping post. Restarting lookup...');
+    console.warn('selected image appears military/private; restarting...');
     await sleep(2000);
     return await runOnce();
   }
