@@ -323,29 +323,73 @@ export async function downloadImageToTemp(url: string, hint = 'image'): Promise<
   return outPath;
 }
 
+const ICAO_PREFIX_TO_COUNTRY: Record<string, string> = {
+  // North America
+  K: 'USA', PA: 'Alaska, USA', PH: 'Hawaii, USA', PG: 'Guam, USA',
+  TJ: 'Puerto Rico, USA', TI: 'US Virgin Islands, USA',
+  C: 'Canada', MM: 'Mexico',
+  // Central America / Caribbean
+  MG: 'Guatemala', MH: 'Honduras', MN: 'Nicaragua', MP: 'Panama', MR: 'Costa Rica',
+  MS: 'El Salvador', MU: 'Cuba', MD: 'Dominican Republic', MB: 'Turks and Caicos',
+  MK: 'Jamaica', MY: 'Bahamas', MZ: 'Belize', TG: 'Grenada', TT: 'Trinidad and Tobago',
+  TB: 'Barbados', TD: 'Dominica', TL: 'Saint Lucia', TV: 'Saint Vincent and the Grenadines',
+  TK: 'Saint Kitts and Nevis', TA: 'Antigua and Barbuda', TF: 'Guadeloupe / Martinique',
+  // South America
+  SA: 'Argentina', SB: 'Brazil', SC: 'Chile', SE: 'Ecuador', SG: 'Paraguay',
+  SK: 'Colombia', SL: 'Bolivia', SM: 'Suriname', SO: 'French Guiana', SP: 'Peru',
+  SU: 'Uruguay', SV: 'Venezuela', SY: 'Guyana',
+  // Europe
+  EG: 'United Kingdom', EI: 'Ireland', EF: 'Finland', EK: 'Denmark', EN: 'Norway',
+  ES: 'Sweden', ED: 'Germany', ET: 'Germany', EH: 'Netherlands', EB: 'Belgium',
+  EL: 'Luxembourg', LF: 'France', LE: 'Spain', GC: 'Canary Islands, Spain',
+  LP: 'Portugal', LI: 'Italy', LM: 'Malta', LS: 'Switzerland', LO: 'Austria',
+  EP: 'Poland', LK: 'Czech Republic', LZ: 'Slovakia', LH: 'Hungary', LR: 'Romania',
+  LB: 'Bulgaria', LD: 'Croatia', LJ: 'Slovenia', LQ: 'Bosnia and Herzegovina',
+  LW: 'North Macedonia', LY: 'Serbia', BK: 'Kosovo', LA: 'Albania', LG: 'Greece',
+  LT: 'Turkey', LC: 'Cyprus', UK: 'Ukraine', UM: 'Belarus', BI: 'Iceland',
+  EV: 'Latvia', EY: 'Lithuania', EE: 'Estonia', UG: 'Georgia', UD: 'Armenia',
+  UB: 'Azerbaijan', ML: 'Moldova', LN: 'Monaco', U: 'Russia',
+  // Middle East
+  OT: 'Qatar', OB: 'Bahrain', OK: 'Kuwait', OO: 'Oman', OM: 'United Arab Emirates',
+  OE: 'Saudi Arabia', OJ: 'Jordan', OL: 'Lebanon', OS: 'Syria', OI: 'Iran',
+  OR: 'Iraq', OY: 'Yemen', LL: 'Israel', OP: 'Pakistan', OA: 'Afghanistan',
+  // Africa
+  FA: 'South Africa', FB: 'Botswana', FC: 'Republic of the Congo', FD: 'Eswatini',
+  FE: 'Central African Republic', FG: 'Equatorial Guinea', FH: 'Saint Helena',
+  FI: 'Mauritius', FJ: 'British Indian Ocean Territory', FK: 'Cameroon',
+  FL: 'Zambia', FM: 'Madagascar', FN: 'Angola', FO: 'Gabon',
+  FP: 'Sao Tome and Principe', FQ: 'Mozambique', FS: 'Seychelles', FT: 'Chad',
+  FV: 'Zimbabwe', FW: 'Malawi', FX: 'Lesotho', FY: 'Namibia',
+  FZ: 'Democratic Republic of the Congo', DA: 'Algeria', DB: 'Benin',
+  DF: 'Burkina Faso', DG: 'Ghana', DI: 'Ivory Coast', DN: 'Nigeria', DR: 'Niger',
+  DT: 'Tunisia', DX: 'Togo', GA: 'Mali', GB: 'Gambia', GF: 'Sierra Leone',
+  GG: 'Guinea-Bissau', GL: 'Liberia', GM: 'Morocco', GO: 'Senegal',
+  GQ: 'Mauritania', GS: 'Western Sahara', GU: 'Guinea', GV: 'Cape Verde',
+  HA: 'Ethiopia', HB: 'Burundi', HC: 'Somalia', HD: 'Djibouti', HE: 'Egypt',
+  HH: 'Eritrea', HK: 'Kenya', HL: 'Libya', HR: 'Rwanda', HS: 'Sudan',
+  HT: 'Tanzania', HU: 'Uganda',
+  // Asia
+  RJ: 'Japan', RO: 'Japan', RK: 'South Korea', ZK: 'North Korea', Z: 'China',
+  RC: 'Taiwan', VH: 'Hong Kong', VM: 'Macau', VT: 'Thailand', VD: 'Cambodia',
+  VL: 'Laos', VV: 'Vietnam', VY: 'Myanmar', WM: 'Malaysia', WB: 'Malaysia',
+  WS: 'Singapore', WI: 'Indonesia', WA: 'Indonesia', WQ: 'Indonesia',
+  WR: 'Indonesia', RP: 'Philippines', VE: 'India', VA: 'India', VI: 'India',
+  VO: 'India', VN: 'Nepal', VG: 'Bangladesh', VC: 'Sri Lanka', VQ: 'Bhutan',
+  VR: 'Maldives', UA: 'Kazakhstan', UT: 'Central Asia',
+  // Oceania
+  Y: 'Australia', NZ: 'New Zealand', NF: 'Fiji', NG: 'Kiribati',
+  NC: 'Cook Islands', NS: 'Samoa', NT: 'French Polynesia', NV: 'Vanuatu',
+  AN: 'Nauru', AY: 'Papua New Guinea', PT: 'Micronesia', PK: 'Marshall Islands',
+};
+// Match longest prefix first so e.g. "VT" (Thailand) beats a stray single-letter
+// fallback, and "ZK" (North Korea) beats the generic "Z" (China) entry.
+const ICAO_PREFIXES_BY_LENGTH = Object.keys(ICAO_PREFIX_TO_COUNTRY).sort((a, b) => b.length - a.length);
+
 function icaoPrefixToCountry(prefix: string): string | undefined {
   if (!prefix) return undefined;
   const p = prefix.toUpperCase();
-  const map: Record<string, string> = {
-    LO: 'Austria',
-    EG: 'United Kingdom',
-    LF: 'France',
-    ED: 'Germany',
-    EH: 'Netherlands',
-    LK: 'Czech Republic',
-    SP: 'Poland',
-    EI: 'Ireland',
-    OM: 'United Arab Emirates',
-    SB: 'Brazil',
-    RJ: 'Japan',
-    RJAA: 'Japan',
-    RK: 'South Korea',
-    CY: 'Canada',
-    C: 'Canada',
-    K: 'USA',
-  };
-  for (const key of Object.keys(map)) {
-    if (p.startsWith(key)) return map[key];
+  for (const key of ICAO_PREFIXES_BY_LENGTH) {
+    if (p.startsWith(key)) return ICAO_PREFIX_TO_COUNTRY[key];
   }
   return undefined;
 }
@@ -395,7 +439,6 @@ function aOrAn(word: string): string {
 
 export function composeCaption(regOrKeyword: string, img: RoowusImage) {
   const aircraft = (img?.Aircraft || '').toString().trim();
-  const registration = (img?.Registration || '').toString().trim();
   const airline = (img?.Airline || '').toString().trim();
   const rawLocation = (img?.Location || '').toString().trim();
   const parsedLocation = rawLocation ? parseLocation(rawLocation) : null;
@@ -432,12 +475,7 @@ export function composeCaption(regOrKeyword: string, img: RoowusImage) {
   const subjectWord = aircraft || regOrKeyword || 'NA';
   const article = aOrAn(subjectWord || '');
   let main = `${article} ${subjectWord}`;
-  if (registration) {
-    main += `, registered ${registration}`;
-  } else {
-    main += `, registered NA`;
-  }
-  if (airline) main += `, and operated by ${airline}`;
+  if (airline) main += `, operated by ${airline}`;
   if (location) main += `, at ${location}`;
   if (when) {
     if (year && month === '00') {

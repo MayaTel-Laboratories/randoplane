@@ -22,6 +22,7 @@ async function runOnce() {
     Photographer: regResult.info?.photographer || '',
     Link: regResult.info?.link || '',
     Registration: regResult.info?.registration || '',
+    Airline: regResult.info?.airline || '',
     Aircraft: regResult.info?.aircraft || '',
     Location: regResult.info?.location || '',
     DateTaken: regResult.info?.date || '',
