@@ -222,7 +222,7 @@ function tryExtractImagesFromJson(json: any): Array<{ url: string; photographer?
   const seen = new Set<string>();
   return out.filter(o => { if (!o.url) return false; if (seen.has(o.url)) return false; seen.add(o.url); return true; });
 }
-export async function findImageForPosting(maxAttempts = Number(process.env.MAX_REG_ATTEMPTS || '12')): Promise<FoundResult | null> {
+export async function findImageForPosting(maxAttempts = Number(process.env.MAX_REG_ATTEMPTS || '50')): Promise<FoundResult | null> {
   const attempts = Math.max(1, Math.min(200, maxAttempts || 12));
   const lockedFormat = pick(REG_FORMATS);
   console.log(`jetapi: locked onto ${lockedFormat.country} (${lockedFormat.prefixes.join('/')}) for this attempt cycle`);
