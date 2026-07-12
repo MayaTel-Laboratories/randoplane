@@ -39,9 +39,8 @@ async function runOnce() {
     throw new Error(msg);
   }
   if (isMilitary(chosenImage) || isPrivate(chosenImage)) {
-    console.warn('selected image appears military/private; restarting...');
-    await sleep(2000);
-    return await runOnce();
+    console.warn('selected image appears military/private; skipping.');
+    throw new Error('i got nothing, sorry');
   }
   let downloadUrl: string | undefined = undefined;
   if (chosenImage.Image && String(chosenImage.Image).trim().length > 0) {
@@ -106,7 +105,8 @@ async function runOnce() {
   }
 }
 (async () => {
-  for (let attempt = 0; attempt <= 3; attempt++) {
+  let attempt = 0;
+  while (true) {
     try {
       await runOnce();
       process.exit(0);
@@ -117,15 +117,10 @@ async function runOnce() {
         console.error('fatal:', err);
         process.exit(1);
       }
-      if (attempt < 3) {
-        console.warn(`no usable images (attempt ${attempt + 1}/4), sleeping 10s and retrying...`);
-        await sleep(10000);
-        continue;
-      } else {
-        console.error('no more retries. trying again?');
-        await sleep(2000);
-        return await runOnce();
-        }
-      }
+      attempt++;
+      console.warn(`no usable images (attempt ${attempt}), sleeping 10s and retrying...`);
+      await sleep(10000);
+      continue;
     }
+  }
 })();

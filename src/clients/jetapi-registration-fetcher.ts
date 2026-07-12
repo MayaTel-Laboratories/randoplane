@@ -87,6 +87,7 @@ const REG_FORMATS: RegFormat[] = [
   { country: 'Bahrain', prefixes: ['A9C-'], suffixMin: 2, suffixMax: 2, suffixCharset: ALPHA },
   { country: 'Jordan', prefixes: ['JY-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Lebanon', prefixes: ['OD-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
+  { country: 'Oman', prefixes: ['A4O-'], suffixMin: 2, suffixMax: 2, suffixCharset: ALPHA },
   { country: 'Iran', prefixes: ['EP-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Iraq', prefixes: ['YI-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Japan', prefixes: ['JA'], suffixMin: 3, suffixMax: 4, suffixCharset: ALNUM },
@@ -153,9 +154,6 @@ function buildFromFormat(fmt: RegFormat): string {
   return prefix + suffix;
 }
 
-function genRegistrationForAttempt(): string {
-  return buildFromFormat(pick(REG_FORMATS));
-}
 function getField(obj: any, keys: string[]) {
   if (!obj || typeof obj !== 'object') return undefined;
   for (const k of keys) {
@@ -226,8 +224,10 @@ function tryExtractImagesFromJson(json: any): Array<{ url: string; photographer?
 }
 export async function findImageForPosting(maxAttempts = Number(process.env.MAX_REG_ATTEMPTS || '12')): Promise<FoundResult | null> {
   const attempts = Math.max(1, Math.min(200, maxAttempts || 12));
+  const lockedFormat = pick(REG_FORMATS);
+  console.log(`jetapi: locked onto ${lockedFormat.country} (${lockedFormat.prefixes.join('/')}) for this attempt cycle`);
   for (let i = 0; i < attempts; i++) {
-    const gen = genRegistrationForAttempt();
+    const gen = buildFromFormat(lockedFormat);
     console.log(`jetapi: trying generated reg (${i + 1}/${attempts}): ${gen}`);
     try {
       const json = await queryJetApiByRegistration(gen, 3, 8000);
