@@ -10,7 +10,7 @@ async function runOnce() {
   const dryRun = (process.env.POST_DRY_RUN || '').toLowerCase().trim();
   const isDryRun = dryRun === '1' || dryRun === 'true' || dryRun === 'yes';
   console.log('trying registration-based lookup via JetAPI...');
-  const regResult = await findImageForPosting(Number(process.env.MAX_REG_ATTEMPTS || '12'));
+  const regResult = await findImageForPosting(Number(process.env.MAX_REG_ATTEMPTS || '50'));
   if (!regResult) {
     console.warn('registration-based lookup found nothing.');
     throw new Error('i got nothing, sorry');
