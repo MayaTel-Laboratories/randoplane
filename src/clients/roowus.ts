@@ -21,7 +21,7 @@ export type RoowusImage = {
 };
 
 const PRIVATE_KEYWORDS = [
-  'private', 'general aviation', 'Piper', 'Beechcraft', 'Cirrus',
+  'private', 'general aviation', 'Piper', 'Beechcraft', 'Cirrus', 'Cessna',
 ];
 
 const MILITARY_KEYWORDS = [
@@ -183,8 +183,11 @@ export function isMilitary(img: RoowusImage): boolean {
 }
 
 export function isPrivate(img: RoowusImage): boolean {
-  const airline = (img?.Airline || '').toLowerCase().trim();
-  return PRIVATE_KEYWORDS.some(kw => airline.includes(kw));
+  const haystack = [img.Airline, img.Aircraft]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  return PRIVATE_KEYWORDS.some(kw => haystack.includes(kw.toLowerCase()));
 }
 
 async function retry<T>(fn: () => Promise<T>, attempts = 3, backoffMs = 300): Promise<T> {
