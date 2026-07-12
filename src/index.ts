@@ -4,16 +4,26 @@ import * as fs from 'fs';
 import { postImage as postToBluesky } from './clients/at';
 import { postImage as postToMastodon } from './clients/mastodon';
 import { downloadImageToTemp, composeCaption, recordPostedPhoto, isMilitary, isPrivate } from './clients/roowus';
-import { findImageForPosting } from './clients/jetapi-registration-fetcher';
+import { findImageForPosting, findImageForRegistration } from './clients/jetapi-registration-fetcher';
 function sleep(ms: number) { return new Promise((res) => setTimeout(res, ms)); }
 async function runOnce() {
   const dryRun = (process.env.POST_DRY_RUN || '').toLowerCase().trim();
   const isDryRun = dryRun === '1' || dryRun === 'true' || dryRun === 'yes';
-  console.log('trying registration-based lookup via JetAPI...');
-  const regResult = await findImageForPosting(Number(process.env.MAX_REG_ATTEMPTS || '50'));
-  if (!regResult) {
-    console.warn('registration-based lookup found nothing.');
-    throw new Error('i got nothing, sorry');
+  const forcedReg = (process.env.FORCE_REGISTRATION || '').trim();
+  let regResult;
+  if (forcedReg) {
+    console.log(`FORCE_REGISTRATION set — skipping random search, looking up ${forcedReg} directly...`);
+    regResult = await findImageForRegistration(forcedReg);
+    if (!regResult) {
+      throw new Error(`FORCE_REGISTRATION=${forcedReg} found nothing on JetAPI (wrong registration, no photo on file, or it was already posted before). Not retrying, since the same lookup would just fail again.`);
+    }
+  } else {
+    console.log('trying registration-based lookup via JetAPI...');
+    regResult = await findImageForPosting(Number(process.env.MAX_REG_ATTEMPTS || '12'));
+    if (!regResult) {
+      console.warn('registration-based lookup found nothing.');
+      throw new Error('i got nothing, sorry');
+    }
   }
   const chosenKeyword = regResult.info?.registration || regResult.reg || '';
   const chosenImage: any = {
@@ -39,6 +49,9 @@ async function runOnce() {
     throw new Error(msg);
   }
   if (isMilitary(chosenImage) || isPrivate(chosenImage)) {
+    if (forcedReg) {
+      throw new Error(`FORCE_REGISTRATION=${forcedReg} matched a military or private aircraft, which the bot won't post. Pick a different registration.`);
+    }
     console.warn('selected image appears military/private; skipping.');
     throw new Error('i got nothing, sorry');
   }

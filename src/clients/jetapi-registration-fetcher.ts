@@ -222,7 +222,41 @@ function tryExtractImagesFromJson(json: any): Array<{ url: string; photographer?
   const seen = new Set<string>();
   return out.filter(o => { if (!o.url) return false; if (seen.has(o.url)) return false; seen.add(o.url); return true; });
 }
-export async function findImageForPosting(maxAttempts = Number(process.env.MAX_REG_ATTEMPTS || '50')): Promise<FoundResult | null> {
+function resultFromImages(imgs: ReturnType<typeof tryExtractImagesFromJson>, json: any, gen: string): FoundResult | 'duplicate' | null {
+  if (imgs.length === 0) return null;
+  const first = imgs[Math.floor(Math.random() * imgs.length)];
+  const raw = first.raw || json;
+  const aircraft = getField(raw, ['Aircraft', 'aircraft', 'AircraftType', 'Model', 'model']);
+  const location = getField(raw, ['Location', 'location', 'locationName', 'LocationName', 'Airport']);
+  const registrationFromData = getField(raw, ['Registration', 'Reg', 'registration', 'reg', 'tailNumber', 'tail_number']);
+  const date = getField(raw, ['DateTaken', 'DateUploaded', 'date', 'Taken', 'uploadedDate']);
+  const photographer = first.photographer || getField(raw, ['Photographer', 'photographer']);
+  const link = first.link || getField(raw, ['Link', 'link', 'pageUrl', 'photoPageUrl']);
+  const id = first.id || getField(raw, ['photoId', 'PhotoId', 'id', 'photo_id']);
+  const derivedId = id || (link ? (link.match(/\/photo\/(\d+)/) || [])[1] : undefined);
+  if (derivedId && wasPhotoPosted(derivedId)) {
+    console.log(`jetapi: ${gen} matched photo ${derivedId}, but it's already been posted before — skipping.`);
+    return 'duplicate';
+  }
+  const airline = getField(raw, ['Airline', 'airline', 'Operator', 'operator']);
+  const registration = isValidRegistration(registrationFromData) ? registrationFromData : null;
+  return {
+    reg: registration || '',
+    imageUrl: first.url,
+    info: {
+      photographer: photographer || null,
+      link: link || null,
+      id: derivedId || null,
+      raw: raw,
+      aircraft: aircraft || null,
+      airline: airline || null,
+      location: location || null,
+      registration: registration || null,
+      date: date || null
+    }
+  };
+}
+export async function findImageForPosting(maxAttempts = 12): Promise<FoundResult | null> {
   const attempts = Math.max(1, Math.min(200, maxAttempts || 12));
   const lockedFormat = pick(REG_FORMATS);
   console.log(`jetapi: locked onto ${lockedFormat.country} (${lockedFormat.prefixes.join('/')}) for this attempt cycle`);
@@ -234,43 +268,29 @@ export async function findImageForPosting(maxAttempts = Number(process.env.MAX_R
       if (!json) { console.log(`jetapi: no json for ${gen}`); await new Promise(r => setTimeout(r, 200 + Math.floor(Math.random() * 300))); continue; }
       const imgs = tryExtractImagesFromJson(json);
       console.log(`jetapi: extracted ${imgs.length} image candidates for ${gen}`);
-      if (imgs.length > 0) {
-        const first = imgs[Math.floor(Math.random() * imgs.length)];
-        const raw = first.raw || json;
-        const aircraft = getField(raw, ['Aircraft', 'aircraft', 'AircraftType', 'Model', 'model']);
-        const location = getField(raw, ['Location', 'location', 'locationName', 'LocationName', 'Airport']);
-        const registrationFromData = getField(raw, ['Registration', 'Reg', 'registration', 'reg', 'tailNumber', 'tail_number']);
-        const date = getField(raw, ['DateTaken', 'DateUploaded', 'date', 'Taken', 'uploadedDate']);
-        const photographer = first.photographer || getField(raw, ['Photographer', 'photographer']);
-        const link = first.link || getField(raw, ['Link', 'link', 'pageUrl', 'photoPageUrl']);
-        const id = first.id || getField(raw, ['photoId', 'PhotoId', 'id', 'photo_id']);
-        const derivedId = id || (link ? (link.match(/\/photo\/(\d+)/) || [])[1] : undefined);
-        if (derivedId && wasPhotoPosted(derivedId)) {
-          console.log(`jetapi: ${gen} matched photo ${derivedId}, but it's already been posted before — skipping.`);
-          continue;
-        }
-        const airline = getField(raw, ['Airline', 'airline', 'Operator', 'operator']);
-        const registration = isValidRegistration(registrationFromData) ? registrationFromData : null;
-        return {
-          reg: registration || '',
-          imageUrl: first.url,
-          info: {
-            photographer: photographer || null,
-            link: link || null,
-            id: derivedId || null,
-            raw: raw,
-            aircraft: aircraft || null,
-            airline: airline || null,
-            location: location || null,
-            registration: registration || null,
-            date: date || null
-          }
-        };
-      }
+      const result = resultFromImages(imgs, json, gen);
+      if (result === 'duplicate') { continue; }
+      if (result) return result;
     } catch (e) {
       console.warn('jetapi: unexpected error during reg attempt', e && (e as any).message ? (e as any).message : e);
     }
     await new Promise((r) => setTimeout(r, 250 + Math.floor(Math.random() * 400)));
   }
   return null;
+}
+export async function findImageForRegistration(reg: string): Promise<FoundResult | null> {
+  const cleaned = (reg || '').trim().toUpperCase();
+  if (!cleaned) return null;
+  console.log(`jetapi: forced registration lookup: ${cleaned}`);
+  try {
+    const json = await queryJetApiByRegistration(cleaned, 3, 8000);
+    if (!json) { console.warn(`jetapi: no json for forced reg ${cleaned}`); return null; }
+    const imgs = tryExtractImagesFromJson(json);
+    console.log(`jetapi: extracted ${imgs.length} image candidates for forced reg ${cleaned}`);
+    const result = resultFromImages(imgs, json, cleaned);
+    return result === 'duplicate' ? null : result;
+  } catch (e) {
+    console.warn('jetapi: unexpected error during forced reg lookup', e && (e as any).message ? (e as any).message : e);
+    return null;
+  }
 }
