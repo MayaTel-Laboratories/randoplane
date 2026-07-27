@@ -28,12 +28,14 @@ type RegFormat = {
   suffixMin: number;
   suffixMax: number;
   suffixCharset: typeof ALPHA | typeof ALNUM | typeof DIGITS;
+  weight?: number;
+  generator?: () => string;
 };
 
 const REG_FORMATS: RegFormat[] = [
-  { country: 'USA', prefixes: ['N'], suffixMin: 3, suffixMax: 5, suffixCharset: ALNUM },
-  { country: 'USA (pre-1950)', prefixes: ['NC'], suffixMin: 3, suffixMax: 5, suffixCharset: ALNUM },
-  { country: 'Canada', prefixes: ['C-F', 'C-G'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
+  { country: 'USA', prefixes: ['N'], suffixMin: 3, suffixMax: 5, suffixCharset: ALNUM, weight: 10, generator: generateUsReg },
+  { country: 'USA (pre-1950)', prefixes: ['NC'], suffixMin: 4, suffixMax: 5, suffixCharset: DIGITS, weight: 3, generator: generateUsVintageReg },
+  { country: 'Canada', prefixes: ['C-F', 'C-G'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA, weight: 4 },
   { country: 'Mexico', prefixes: ['XA-', 'XB-', 'XC-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALNUM },
   { country: 'Cuba', prefixes: ['CU-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALNUM },
   { country: 'Jamaica', prefixes: ['6Y-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
@@ -43,7 +45,7 @@ const REG_FORMATS: RegFormat[] = [
   { country: 'Guatemala', prefixes: ['TG-'], suffixMin: 3, suffixMax: 4, suffixCharset: ALNUM },
   { country: 'Dominican Republic', prefixes: ['HI-'], suffixMin: 3, suffixMax: 4, suffixCharset: ALNUM },
   { country: 'Trinidad and Tobago', prefixes: ['9Y-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
-  { country: 'Brazil', prefixes: ['PR-', 'PP-', 'PT-', 'PU-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
+  { country: 'Brazil', prefixes: ['PR-', 'PP-', 'PT-', 'PU-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA, weight: 4 },
   { country: 'Argentina', prefixes: ['LV-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALNUM },
   { country: 'Chile', prefixes: ['CC-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Colombia', prefixes: ['HK-'], suffixMin: 3, suffixMax: 4, suffixCharset: ALNUM },
@@ -54,18 +56,18 @@ const REG_FORMATS: RegFormat[] = [
   { country: 'Uruguay', prefixes: ['CX-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Paraguay', prefixes: ['ZP-'], suffixMin: 3, suffixMax: 4, suffixCharset: ALNUM },
   { country: 'Guyana', prefixes: ['8R-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
-  { country: 'United Kingdom', prefixes: ['G-'], suffixMin: 4, suffixMax: 4, suffixCharset: ALNUM },
-  { country: 'Germany', prefixes: ['D-'], suffixMin: 3, suffixMax: 4, suffixCharset: ALPHA },
+  { country: 'United Kingdom', prefixes: ['G-'], suffixMin: 4, suffixMax: 4, suffixCharset: ALNUM, weight: 3 },
+  { country: 'Germany', prefixes: ['D-A', 'D-C'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA, weight: 3 },
   { country: 'East Germany', prefixes: ['DDR-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
-  { country: 'France', prefixes: ['F-'], suffixMin: 4, suffixMax: 4, suffixCharset: ALPHA },
+  { country: 'France', prefixes: ['F-G', 'F-B'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA, weight: 3 },
   { country: 'Italy', prefixes: ['I-'], suffixMin: 3, suffixMax: 4, suffixCharset: ALPHA },
-  { country: 'Austria', prefixes: ['OE-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
-  { country: 'Netherlands', prefixes: ['PH-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
+  { country: 'Austria', prefixes: ['OE-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA, weight: 1 },
+  { country: 'Netherlands', prefixes: ['PH-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA, weight: 1 },
   { country: 'Spain', prefixes: ['EC-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALNUM },
   { country: 'Portugal', prefixes: ['CS-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
-  { country: 'Switzerland', prefixes: ['HB-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
-  { country: 'Belgium', prefixes: ['OO-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
-  { country: 'Ireland', prefixes: ['EI-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
+  { country: 'Switzerland', prefixes: ['HB-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA, weight: 1 },
+  { country: 'Belgium', prefixes: ['OO-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA, weight: 1 },
+  { country: 'Ireland', prefixes: ['EI-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA, weight: 1 },
   { country: 'Sweden', prefixes: ['SE-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Norway', prefixes: ['LN-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Denmark', prefixes: ['OY-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
@@ -77,42 +79,42 @@ const REG_FORMATS: RegFormat[] = [
   { country: 'Greece', prefixes: ['SX-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Turkey', prefixes: ['TC-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Russia', prefixes: ['RA-'], suffixMin: 5, suffixMax: 5, suffixCharset: DIGITS },
-  { country: 'Soviet Union', prefixes: ['CCCP-'], suffixMin: 5, suffixMax: 5, suffixCharset: DIGITS },
+  { country: 'Soviet Union', prefixes: ['CCCP-'], suffixMin: 5, suffixMax: 5, suffixCharset: DIGITS, weight: 3 },
   { country: 'Ukraine', prefixes: ['UR-'], suffixMin: 5, suffixMax: 5, suffixCharset: ALNUM },
   { country: 'Romania', prefixes: ['YR-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALNUM },
   { country: 'Croatia', prefixes: ['9A-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Saudi Arabia', prefixes: ['HZ-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALNUM },
   { country: 'Qatar', prefixes: ['A7-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Kuwait', prefixes: ['9K-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
-  { country: 'Bahrain', prefixes: ['A9C-'], suffixMin: 2, suffixMax: 2, suffixCharset: ALPHA },
+  { country: 'Bahrain', prefixes: ['A9C-'], suffixMin: 2, suffixMax: 2, suffixCharset: ALPHA, weight: 1 },
   { country: 'Jordan', prefixes: ['JY-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Lebanon', prefixes: ['OD-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
-  { country: 'Oman', prefixes: ['A4O-'], suffixMin: 2, suffixMax: 2, suffixCharset: ALPHA },
+  { country: 'Oman', prefixes: ['A4O-'], suffixMin: 2, suffixMax: 2, suffixCharset: ALPHA, weight: 1 },
   { country: 'Iran', prefixes: ['EP-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Iraq', prefixes: ['YI-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
-  { country: 'Japan', prefixes: ['JA'], suffixMin: 3, suffixMax: 4, suffixCharset: ALNUM },
-  { country: 'China', prefixes: ['B-'], suffixMin: 4, suffixMax: 4, suffixCharset: DIGITS },
+  { country: 'Japan', prefixes: ['JA'], suffixMin: 3, suffixMax: 4, suffixCharset: ALNUM, weight: 4 },
+  { country: 'China', prefixes: ['B-'], suffixMin: 4, suffixMax: 4, suffixCharset: DIGITS, weight: 3 },
   { country: 'Taiwan', prefixes: ['B-'], suffixMin: 5, suffixMax: 5, suffixCharset: DIGITS },
-  { country: 'Hong Kong', prefixes: ['B-H'], suffixMin: 2, suffixMax: 2, suffixCharset: ALPHA },
-  { country: 'Macau', prefixes: ['B-M'], suffixMin: 2, suffixMax: 2, suffixCharset: ALPHA },
+  { country: 'Hong Kong', prefixes: ['B-H'], suffixMin: 2, suffixMax: 2, suffixCharset: ALPHA, weight: 1 },
+  { country: 'Macau', prefixes: ['B-M'], suffixMin: 2, suffixMax: 2, suffixCharset: ALPHA, weight: 1 },
   { country: 'South Korea', prefixes: ['HL'], suffixMin: 4, suffixMax: 4, suffixCharset: DIGITS },
-  { country: 'North Korea', prefixes: ['P-'], suffixMin: 3, suffixMax: 3, suffixCharset: DIGITS },
+  { country: 'North Korea', prefixes: ['P-'], suffixMin: 3, suffixMax: 3, suffixCharset: DIGITS, weight: 1 },
   { country: 'Thailand', prefixes: ['HS-'], suffixMin: 3, suffixMax: 4, suffixCharset: ALNUM },
-  { country: 'Vietnam', prefixes: ['VN-A'], suffixMin: 3, suffixMax: 3, suffixCharset: DIGITS },
-  { country: 'Laos', prefixes: ['RDPL-'], suffixMin: 2, suffixMax: 2, suffixCharset: DIGITS },
+  { country: 'Vietnam', prefixes: ['VN-A'], suffixMin: 3, suffixMax: 3, suffixCharset: DIGITS, weight: 1 },
+  { country: 'Laos', prefixes: ['RDPL-'], suffixMin: 2, suffixMax: 2, suffixCharset: DIGITS, weight: 1 },
   { country: 'Cambodia', prefixes: ['XU-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALNUM },
   { country: 'Myanmar', prefixes: ['XY-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALNUM },
   { country: 'Philippines', prefixes: ['RP-C'], suffixMin: 4, suffixMax: 4, suffixCharset: DIGITS },
   { country: 'Indonesia', prefixes: ['PK-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Malaysia', prefixes: ['9M-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Singapore', prefixes: ['9V-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
-  { country: 'Brunei', prefixes: ['V8-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
+  { country: 'Brunei', prefixes: ['V8-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA, weight: 1 },
   { country: 'India', prefixes: ['VT-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Pakistan', prefixes: ['AP-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Bangladesh', prefixes: ['S2-'], suffixMin: 3, suffixMax: 4, suffixCharset: ALNUM },
   { country: 'Sri Lanka', prefixes: ['4R-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Nepal', prefixes: ['9N-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
-  { country: 'Mongolia', prefixes: ['JU-'], suffixMin: 4, suffixMax: 4, suffixCharset: ALNUM },
+  { country: 'Mongolia', prefixes: ['JU-'], suffixMin: 4, suffixMax: 4, suffixCharset: ALNUM, weight: 1 },
   { country: 'Kazakhstan', prefixes: ['UP-'], suffixMin: 5, suffixMax: 5, suffixCharset: DIGITS },
   { country: 'Afghanistan', prefixes: ['YA-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'South Africa', prefixes: ['ZS-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
@@ -138,20 +140,58 @@ const REG_FORMATS: RegFormat[] = [
   { country: 'Cameroon', prefixes: ['TJ-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'DR Congo', prefixes: ['9Q-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Sudan', prefixes: ['ST-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
-  { country: 'Rwanda', prefixes: ['9XR-'], suffixMin: 2, suffixMax: 2, suffixCharset: ALPHA },
+  { country: 'Rwanda', prefixes: ['9XR-'], suffixMin: 2, suffixMax: 2, suffixCharset: ALPHA, weight: 1 },
   { country: 'Mauritius', prefixes: ['3B-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Madagascar', prefixes: ['5R-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Malawi', prefixes: ['7Q-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
-  { country: 'Australia', prefixes: ['VH-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
+  { country: 'Australia', prefixes: ['VH-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA, weight: 4 },
   { country: 'New Zealand', prefixes: ['ZK-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
 ];
 
 function buildFromFormat(fmt: RegFormat): string {
+  if (fmt.generator) return fmt.generator();
   const prefix = pick(fmt.prefixes);
   const len = randInt(fmt.suffixMin, fmt.suffixMax);
   let suffix = '';
   for (let i = 0; i < len; i++) suffix += fmt.suffixCharset.charAt(Math.floor(Math.random() * fmt.suffixCharset.length));
   return prefix + suffix;
+}
+
+const N_FIRST_DIGITS = '123456789';
+const N_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+const N_AIRLINE_SUFFIXES = ['AA', 'UA', 'DL', 'NW', 'US', 'WN', 'SW', 'AS', 'HA', 'JB', 'FE', 'FX', 'UP', 'PA', 'WA', 'BN', 'EA', 'TW', 'CO'];
+
+function nDigits(count: number): string {
+  let s = N_FIRST_DIGITS.charAt(Math.floor(Math.random() * N_FIRST_DIGITS.length));
+  for (let i = 1; i < count; i++) s += DIGITS.charAt(Math.floor(Math.random() * DIGITS.length));
+  return s;
+}
+
+function nLetter(): string {
+  return N_LETTERS.charAt(Math.floor(Math.random() * N_LETTERS.length));
+}
+
+function generateUsReg(): string {
+  const roll = Math.random();
+  if (roll < 0.35) return 'N' + nDigits(3) + pick(N_AIRLINE_SUFFIXES);
+  if (roll < 0.5)  return 'N' + nDigits(2) + pick(N_AIRLINE_SUFFIXES);
+  if (roll < 0.7)  return 'N' + nDigits(randInt(4, 5));
+  if (roll < 0.85) return 'N' + nDigits(randInt(3, 4)) + nLetter();
+  return 'N' + nDigits(3) + nLetter() + nLetter();
+}
+
+function generateUsVintageReg(): string {
+  return 'NC' + nDigits(randInt(4, 5));
+}
+
+function weightedPickFormat(): RegFormat {
+  const total = REG_FORMATS.reduce((sum, f) => sum + (f.weight ?? 2), 0);
+  let roll = Math.random() * total;
+  for (const f of REG_FORMATS) {
+    roll -= (f.weight ?? 2);
+    if (roll <= 0) return f;
+  }
+  return REG_FORMATS[REG_FORMATS.length - 1];
 }
 
 function getField(obj: any, keys: string[]) {
@@ -258,11 +298,10 @@ function resultFromImages(imgs: ReturnType<typeof tryExtractImagesFromJson>, jso
 }
 export async function findImageForPosting(maxAttempts = 12): Promise<FoundResult | null> {
   const attempts = Math.max(1, Math.min(200, maxAttempts || 12));
-  const lockedFormat = pick(REG_FORMATS);
-  console.log(`jetapi: locked onto ${lockedFormat.country} (${lockedFormat.prefixes.join('/')}) for this attempt cycle`);
   for (let i = 0; i < attempts; i++) {
-    const gen = buildFromFormat(lockedFormat);
-    console.log(`jetapi: trying generated reg (${i + 1}/${attempts}): ${gen}`);
+    const fmt = weightedPickFormat();
+    const gen = buildFromFormat(fmt);
+    console.log(`jetapi: trying generated reg (${i + 1}/${attempts}): ${gen} (${fmt.country})`);
     try {
       const json = await queryJetApiByRegistration(gen, 3, 8000);
       if (!json) { console.log(`jetapi: no json for ${gen}`); await new Promise(r => setTimeout(r, 200 + Math.floor(Math.random() * 300))); continue; }

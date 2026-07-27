@@ -1,7 +1,7 @@
 const DEFAULT_BASE = 'https://www.jetapi.dev/api';
 export async function queryJetApiByRegistration(reg: string, attempts = 3, timeoutMs = 8000): Promise<any | null> {
   const base = (process.env.JETAPI_BASE || DEFAULT_BASE).replace(/\/$/, '');
-  const url = `${base}?reg=${encodeURIComponent(reg)}`;
+  const url = `${base}?reg=${encodeURIComponent(reg)}&photos=20&flights=1&only_jp=true`;
   let lastErr: any;
   for (let i = 0; i < attempts; i++) {
     const controller = new AbortController();
