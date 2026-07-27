@@ -33,7 +33,7 @@ type RegFormat = {
 };
 
 const REG_FORMATS: RegFormat[] = [
-  { country: 'USA', prefixes: ['N'], suffixMin: 3, suffixMax: 5, suffixCharset: ALNUM, weight: 10, generator: generateUsReg },
+  { country: 'USA', prefixes: ['N'], suffixMin: 3, suffixMax: 5, suffixCharset: ALNUM, weight: 25, generator: generateUsReg },
   { country: 'USA (pre-1950)', prefixes: ['NC'], suffixMin: 4, suffixMax: 5, suffixCharset: DIGITS, weight: 3, generator: generateUsVintageReg },
   { country: 'Canada', prefixes: ['C-F', 'C-G'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA, weight: 4 },
   { country: 'Mexico', prefixes: ['XA-', 'XB-', 'XC-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALNUM },
@@ -58,7 +58,7 @@ const REG_FORMATS: RegFormat[] = [
   { country: 'Guyana', prefixes: ['8R-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'United Kingdom', prefixes: ['G-'], suffixMin: 4, suffixMax: 4, suffixCharset: ALNUM, weight: 3 },
   { country: 'Germany', prefixes: ['D-A', 'D-C'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA, weight: 3 },
-  { country: 'East Germany', prefixes: ['DDR-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
+  { country: 'East Germany', prefixes: ['DDR-S', 'DM-S'], suffixMin: 2, suffixMax: 2, suffixCharset: ALPHA, weight: 5 },
   { country: 'France', prefixes: ['F-G', 'F-B'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA, weight: 3 },
   { country: 'Italy', prefixes: ['I-'], suffixMin: 3, suffixMax: 4, suffixCharset: ALPHA },
   { country: 'Austria', prefixes: ['OE-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA, weight: 1 },
@@ -79,7 +79,7 @@ const REG_FORMATS: RegFormat[] = [
   { country: 'Greece', prefixes: ['SX-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Turkey', prefixes: ['TC-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Russia', prefixes: ['RA-'], suffixMin: 5, suffixMax: 5, suffixCharset: DIGITS },
-  { country: 'Soviet Union', prefixes: ['CCCP-'], suffixMin: 5, suffixMax: 5, suffixCharset: DIGITS, weight: 3 },
+  { country: 'Soviet Union', prefixes: ['CCCP-'], suffixMin: 5, suffixMax: 5, suffixCharset: DIGITS, weight: 8 },
   { country: 'Ukraine', prefixes: ['UR-'], suffixMin: 5, suffixMax: 5, suffixCharset: ALNUM },
   { country: 'Romania', prefixes: ['YR-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALNUM },
   { country: 'Croatia', prefixes: ['9A-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
@@ -93,12 +93,12 @@ const REG_FORMATS: RegFormat[] = [
   { country: 'Iran', prefixes: ['EP-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Iraq', prefixes: ['YI-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Japan', prefixes: ['JA'], suffixMin: 3, suffixMax: 4, suffixCharset: ALNUM, weight: 4 },
-  { country: 'China', prefixes: ['B-'], suffixMin: 4, suffixMax: 4, suffixCharset: DIGITS, weight: 3 },
+  { country: 'China', prefixes: ['B-'], suffixMin: 4, suffixMax: 4, suffixCharset: DIGITS, weight: 8 },
   { country: 'Taiwan', prefixes: ['B-'], suffixMin: 5, suffixMax: 5, suffixCharset: DIGITS },
-  { country: 'Hong Kong', prefixes: ['B-H'], suffixMin: 2, suffixMax: 2, suffixCharset: ALPHA, weight: 1 },
+  { country: 'Hong Kong', prefixes: ['B-H'], suffixMin: 2, suffixMax: 2, suffixCharset: ALPHA, weight: 6 },
   { country: 'Macau', prefixes: ['B-M'], suffixMin: 2, suffixMax: 2, suffixCharset: ALPHA, weight: 1 },
   { country: 'South Korea', prefixes: ['HL'], suffixMin: 4, suffixMax: 4, suffixCharset: DIGITS },
-  { country: 'North Korea', prefixes: ['P-'], suffixMin: 3, suffixMax: 3, suffixCharset: DIGITS, weight: 1 },
+  { country: 'North Korea', prefixes: ['P-'], suffixMin: 3, suffixMax: 3, suffixCharset: DIGITS, weight: 6, generator: generateDprkReg },
   { country: 'Thailand', prefixes: ['HS-'], suffixMin: 3, suffixMax: 4, suffixCharset: ALNUM },
   { country: 'Vietnam', prefixes: ['VN-A'], suffixMin: 3, suffixMax: 3, suffixCharset: DIGITS, weight: 1 },
   { country: 'Laos', prefixes: ['RDPL-'], suffixMin: 2, suffixMax: 2, suffixCharset: DIGITS, weight: 1 },
@@ -182,6 +182,13 @@ function generateUsReg(): string {
 
 function generateUsVintageReg(): string {
   return 'NC' + nDigits(randInt(4, 5));
+}
+
+function generateDprkReg(): string {
+  const first = pick(['5', '6', '8', '9']);
+  let s = first;
+  for (let i = 0; i < 2; i++) s += DIGITS.charAt(Math.floor(Math.random() * DIGITS.length));
+  return 'P-' + s;
 }
 
 function weightedPickFormat(): RegFormat {
