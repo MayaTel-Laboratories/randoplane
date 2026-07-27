@@ -36,6 +36,7 @@ const REG_FORMATS: RegFormat[] = [
   { country: 'USA', prefixes: ['N'], suffixMin: 3, suffixMax: 5, suffixCharset: ALNUM, weight: 25, generator: generateUsReg },
   { country: 'USA (pre-1950)', prefixes: ['NC'], suffixMin: 4, suffixMax: 5, suffixCharset: DIGITS, weight: 3, generator: generateUsVintageReg },
   { country: 'Canada', prefixes: ['C-F', 'C-G'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA, weight: 4 },
+  { country: 'Canada (pre-1974)', prefixes: ['CF-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA, weight: 2 },
   { country: 'Mexico', prefixes: ['XA-', 'XB-', 'XC-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALNUM },
   { country: 'Cuba', prefixes: ['CU-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALNUM },
   { country: 'Jamaica', prefixes: ['6Y-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
@@ -56,10 +57,11 @@ const REG_FORMATS: RegFormat[] = [
   { country: 'Uruguay', prefixes: ['CX-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Paraguay', prefixes: ['ZP-'], suffixMin: 3, suffixMax: 4, suffixCharset: ALNUM },
   { country: 'Guyana', prefixes: ['8R-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
-  { country: 'United Kingdom', prefixes: ['G-'], suffixMin: 4, suffixMax: 4, suffixCharset: ALNUM, weight: 3 },
-  { country: 'Germany', prefixes: ['D-A', 'D-C'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA, weight: 3 },
+  { country: 'United Kingdom', prefixes: ['G-'], suffixMin: 4, suffixMax: 4, suffixCharset: ALNUM, weight: 5 },
+  { country: 'United Kingdom (vintage)', prefixes: ['G-A', 'G-B'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA, weight: 3 },
+  { country: 'Germany', prefixes: ['D-A', 'D-C'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA, weight: 5 },
   { country: 'East Germany', prefixes: ['DDR-S', 'DM-S'], suffixMin: 2, suffixMax: 2, suffixCharset: ALPHA, weight: 5 },
-  { country: 'France', prefixes: ['F-G', 'F-B'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA, weight: 3 },
+  { country: 'France', prefixes: ['F-G', 'F-B'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA, weight: 5 },
   { country: 'Italy', prefixes: ['I-'], suffixMin: 3, suffixMax: 4, suffixCharset: ALPHA },
   { country: 'Austria', prefixes: ['OE-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA, weight: 1 },
   { country: 'Netherlands', prefixes: ['PH-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA, weight: 1 },
@@ -173,8 +175,8 @@ function nLetter(): string {
 
 function generateUsReg(): string {
   const roll = Math.random();
-  if (roll < 0.35) return 'N' + nDigits(3) + pick(N_AIRLINE_SUFFIXES);
-  if (roll < 0.5)  return 'N' + nDigits(2) + pick(N_AIRLINE_SUFFIXES);
+  if (roll < 0.3)  return 'N' + nDigits(3) + pick(N_AIRLINE_SUFFIXES);
+  if (roll < 0.4)  return 'N' + nDigits(2) + pick(N_AIRLINE_SUFFIXES);
   if (roll < 0.7)  return 'N' + nDigits(randInt(4, 5));
   if (roll < 0.85) return 'N' + nDigits(randInt(3, 4)) + nLetter();
   return 'N' + nDigits(3) + nLetter() + nLetter();
@@ -286,9 +288,32 @@ function tryExtractImagesFromJson(json: any): Array<{ url: string; photographer?
   const seen = new Set<string>();
   return out.filter(o => { if (!o.url) return false; if (seen.has(o.url)) return false; seen.add(o.url); return true; });
 }
+function photoYear(c: { raw?: any }): number | null {
+  const d = getField(c.raw, ['DateTaken', 'date', 'Taken', 'photoDate', 'uploadedDate', 'DateUploaded']);
+  if (!d) return null;
+  const m = String(d).match(/(19|20)\d{2}/);
+  return m ? Number(m[0]) : null;
+}
+
+function pickWeightedByAge<T extends { raw?: any }>(imgs: T[]): T {
+  const nowYear = new Date().getFullYear();
+  const weights = imgs.map((c) => {
+    const y = photoYear(c);
+    if (!y) return 3;
+    return Math.max(1, nowYear - y + 1);
+  });
+  const total = weights.reduce((a, b) => a + b, 0);
+  let roll = Math.random() * total;
+  for (let i = 0; i < imgs.length; i++) {
+    roll -= weights[i];
+    if (roll <= 0) return imgs[i];
+  }
+  return imgs[imgs.length - 1];
+}
+
 function resultFromImages(imgs: ReturnType<typeof tryExtractImagesFromJson>, json: any, gen: string): FoundResult | 'duplicate' | null {
   if (imgs.length === 0) return null;
-  const first = imgs[Math.floor(Math.random() * imgs.length)];
+  const first = pickWeightedByAge(imgs);
   const raw = first.raw || json;
   const aircraft = getField(raw, ['Aircraft', 'aircraft', 'AircraftType', 'Model', 'model']);
   const location = getField(raw, ['Location', 'location', 'locationName', 'LocationName', 'Airport']);
