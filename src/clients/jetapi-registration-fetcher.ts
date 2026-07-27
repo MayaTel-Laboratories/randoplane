@@ -75,7 +75,7 @@ const REG_FORMATS: RegFormat[] = [
   { country: 'Iceland', prefixes: ['TF-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Poland', prefixes: ['SP-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Czech Republic', prefixes: ['OK-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
-  { country: 'Hungary', prefixes: ['HA-'], suffixMin: 4, suffixMax: 4, suffixCharset: DIGITS },
+  { country: 'Hungary', prefixes: ['HA-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Greece', prefixes: ['SX-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Turkey', prefixes: ['TC-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Russia', prefixes: ['RA-'], suffixMin: 5, suffixMax: 5, suffixCharset: DIGITS },
@@ -189,6 +189,23 @@ function generateDprkReg(): string {
   let s = first;
   for (let i = 0; i < 2; i++) s += DIGITS.charAt(Math.floor(Math.random() * DIGITS.length));
   return 'P-' + s;
+}
+
+function matchesFormat(reg: string | null | undefined, fmt: RegFormat): boolean {
+  if (!reg) return true;
+  const r = reg.trim().toUpperCase();
+  for (const prefix of fmt.prefixes) {
+    const p = prefix.toUpperCase();
+    if (!r.startsWith(p)) continue;
+    const suffix = r.slice(p.length);
+    if (suffix.length < fmt.suffixMin || suffix.length > fmt.suffixMax) continue;
+    let ok = true;
+    for (const ch of suffix) {
+      if (!fmt.suffixCharset.includes(ch)) { ok = false; break; }
+    }
+    if (ok) return true;
+  }
+  return false;
 }
 
 function weightedPickFormat(): RegFormat {
@@ -316,7 +333,14 @@ export async function findImageForPosting(maxAttempts = 12): Promise<FoundResult
       console.log(`jetapi: extracted ${imgs.length} image candidates for ${gen}`);
       const result = resultFromImages(imgs, json, gen);
       if (result === 'duplicate') { continue; }
-      if (result) return result;
+      if (result) {
+        const returnedReg = result.info?.registration || null;
+        if (returnedReg && !matchesFormat(returnedReg, fmt)) {
+          console.log(`jetapi: ${gen} matched ${returnedReg}, which doesn't fit the ${fmt.country} format — skipping.`);
+          continue;
+        }
+        return result;
+      }
     } catch (e) {
       console.warn('jetapi: unexpected error during reg attempt', e && (e as any).message ? (e as any).message : e);
     }
