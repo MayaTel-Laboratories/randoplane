@@ -22,6 +22,7 @@ export type RoowusImage = {
 
 const PRIVATE_KEYWORDS = [
   'private', 'general aviation', 'Piper', 'Beechcraft', 'Cirrus', 'Cessna',
+  'Mooney', 'Gulfstream',
 ];
 
 const MILITARY_KEYWORDS = [
