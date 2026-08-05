@@ -1,5 +1,5 @@
 import { queryJetApiByRegistration } from './jetapi-client';
-import { wasPhotoPosted } from './roowus';
+import { wasPhotoPosted, wasRegistrationPosted, postedRegistrationCount } from './roowus';
 type FoundResult = {
   reg: string;
   imageUrl: string;
@@ -323,8 +323,9 @@ function resultFromImages(imgs: ReturnType<typeof tryExtractImagesFromJson>, jso
   const link = first.link || getField(raw, ['Link', 'link', 'pageUrl', 'photoPageUrl']);
   const id = first.id || getField(raw, ['photoId', 'PhotoId', 'id', 'photo_id']);
   const derivedId = id || (link ? (link.match(/\/photo\/(\d+)/) || [])[1] : undefined);
-  if (derivedId && wasPhotoPosted(derivedId)) {
-    console.log(`jetapi: ${gen} matched photo ${derivedId}, but it's already been posted before — skipping.`);
+  const photoKey = derivedId || first.url;
+  if (photoKey && wasPhotoPosted(photoKey)) {
+    console.log(`jetapi: ${gen} matched photo ${derivedId || first.url}, but it's already been posted before — skipping.`);
     return 'duplicate';
   }
   const airline = getField(raw, ['Airline', 'airline', 'Operator', 'operator']);
@@ -347,9 +348,14 @@ function resultFromImages(imgs: ReturnType<typeof tryExtractImagesFromJson>, jso
 }
 export async function findImageForPosting(maxAttempts = 12): Promise<FoundResult | null> {
   const attempts = Math.max(1, Math.min(200, maxAttempts || 12));
+  console.log(`jetapi: ${postedRegistrationCount()} registrations in the no-no list so far.`);
   for (let i = 0; i < attempts; i++) {
     const fmt = weightedPickFormat();
     const gen = buildFromFormat(fmt);
+    if (wasRegistrationPosted(gen)) {
+      console.log(`jetapi: skipping ${gen} (${fmt.country}) — already posted that airframe.`);
+      continue;
+    }
     console.log(`jetapi: trying generated reg (${i + 1}/${attempts}): ${gen} (${fmt.country})`);
     try {
       const json = await queryJetApiByRegistration(gen, 3, 8000);
@@ -362,6 +368,10 @@ export async function findImageForPosting(maxAttempts = 12): Promise<FoundResult
         const returnedReg = result.info?.registration || null;
         if (returnedReg && !matchesFormat(returnedReg, fmt)) {
           console.log(`jetapi: ${gen} matched ${returnedReg}, which doesn't fit the ${fmt.country} format — skipping.`);
+          continue;
+        }
+        if (returnedReg && wasRegistrationPosted(returnedReg)) {
+          console.log(`jetapi: ${gen} matched ${returnedReg}, which has already been posted — skipping.`);
           continue;
         }
         return result;

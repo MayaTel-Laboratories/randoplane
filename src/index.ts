@@ -3,7 +3,7 @@ dotenv.config();
 import * as fs from 'fs';
 import { postImage as postToBluesky } from './clients/at';
 import { postImage as postToMastodon } from './clients/mastodon';
-import { downloadImageToTemp, composeCaption, recordPostedPhoto, isMilitary, isPrivate } from './clients/roowus';
+import { downloadImageToTemp, composeCaption, recordPostedPhoto, recordPostedRegistration, isMilitary, isPrivate } from './clients/roowus';
 import { findImageForPosting, findImageForRegistration } from './clients/jetapi-registration-fetcher';
 function sleep(ms: number) { return new Promise((res) => setTimeout(res, ms)); }
 async function runOnce() {
@@ -88,11 +88,17 @@ async function runOnce() {
     const mastodonResult = results[1];
     if (blueskyResult && blueskyResult.status === 'fulfilled') {
       try {
-        if (chosenImage?.photoId) {
-          recordPostedPhoto(chosenImage.photoId);
-          console.log('recorded photo id:', chosenImage.photoId);
+        const photoKey = chosenImage?.photoId || chosenImage?.Image;
+        if (photoKey) {
+          recordPostedPhoto(String(photoKey));
+          console.log('recorded photo:', photoKey);
         } else {
-          console.log('no explicit photo id returned; not recording.');
+          console.log('nothing usable to record this photo by.');
+        }
+        const regKey = chosenImage?.Registration || chosenKeyword;
+        if (regKey) {
+          recordPostedRegistration(String(regKey));
+          console.log('recorded registration:', regKey);
         }
       } catch (e) {
         console.warn('failed to record posted photo:', e);

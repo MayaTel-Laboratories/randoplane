@@ -23,6 +23,11 @@ export type RoowusImage = {
 const PRIVATE_KEYWORDS = [
   'private', 'general aviation', 'Piper', 'Beechcraft', 'Cirrus', 'Cessna',
   'Mooney', 'Gulfstream', 'Helicopter', 'Eurocopter', 'Agusta', 'Pilatus',
+  'Sling', 'Gippsland',
+];
+
+const LOCATION_KEYWORDS = [
+  'inflight',
 ];
 
 const MILITARY_KEYWORDS = [
@@ -44,6 +49,8 @@ const CONCURRENCY = Number(process.env.JP_CONCURRENCY || 6);
 const CACHE_TTL_SECONDS = Number(process.env.ROOWUS_CACHE_TTL || 3600);
 const CACHE_DIR = process.env.ROOWUS_CACHE_DIR || path.resolve(process.cwd(), '.roowus_cache');
 const POSTED_HISTORY = path.join(CACHE_DIR, 'posted_photos.json');
+const POSTED_REGS = path.join(CACHE_DIR, 'posted_registrations.json');
+const HISTORY_CAP = 20000;
 const limit = pLimit(CONCURRENCY);
 
 function ensureCacheDir() {
@@ -189,7 +196,9 @@ export function isPrivate(img: RoowusImage): boolean {
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
-  return PRIVATE_KEYWORDS.some(kw => haystack.includes(kw.toLowerCase()));
+  if (PRIVATE_KEYWORDS.some(kw => haystack.includes(kw.toLowerCase()))) return true;
+  const loc = (img.Location || '').toString().toLowerCase();
+  return LOCATION_KEYWORDS.some(kw => loc.includes(kw));
 }
 
 async function retry<T>(fn: () => Promise<T>, attempts = 3, backoffMs = 300): Promise<T> {
@@ -513,9 +522,44 @@ export function recordPostedPhoto(photoId: string) {
     }
     if (!arr.includes(String(photoId))) {
       arr.push(String(photoId));
-      try { fs.writeFileSync(POSTED_HISTORY, JSON.stringify(arr.slice(-500)), 'utf8'); } catch {}
+      try { fs.writeFileSync(POSTED_HISTORY, JSON.stringify(arr.slice(-HISTORY_CAP)), 'utf8'); } catch {}
     }
   } catch {}
+}
+
+function normalizeReg(reg: string): string {
+  return String(reg || '').trim().toUpperCase().replace(/\s+/g, '');
+}
+
+function readList(file: string): string[] {
+  try {
+    if (!fs.existsSync(file)) return [];
+    const arr = JSON.parse(fs.readFileSync(file, 'utf8') || '[]');
+    return Array.isArray(arr) ? arr.map(String) : [];
+  } catch { return []; }
+}
+
+export function recordPostedRegistration(reg: string) {
+  const key = normalizeReg(reg);
+  if (!key) return;
+  try {
+    ensureCacheDir();
+    const arr = readList(POSTED_REGS);
+    if (!arr.includes(key)) {
+      arr.push(key);
+      try { fs.writeFileSync(POSTED_REGS, JSON.stringify(arr.slice(-HISTORY_CAP)), 'utf8'); } catch {}
+    }
+  } catch {}
+}
+
+export function wasRegistrationPosted(reg: string): boolean {
+  const key = normalizeReg(reg);
+  if (!key) return false;
+  return readList(POSTED_REGS).includes(key);
+}
+
+export function postedRegistrationCount(): number {
+  return readList(POSTED_REGS).length;
 }
 
 export function wasPhotoPosted(photoId: string) {
