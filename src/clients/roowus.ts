@@ -23,7 +23,12 @@ export type RoowusImage = {
 const PRIVATE_KEYWORDS = [
   'private', 'general aviation', 'Piper', 'Beechcraft', 'Cirrus', 'Cessna',
   'Mooney', 'Gulfstream', 'Helicopter', 'Eurocopter', 'Agusta', 'Pilatus',
-  'Sling', 'Gippsland', 'Robinson',
+  'Sling', 'Gippsland', 'Robinson', 'Diamond', 'Swidnik', 'Zlin', 'SZD',
+  'Socata', 'Aerospatiale',
+];
+
+const ALWAYS_ALLOW = [
+  'concorde',
 ];
 
 const LOCATION_KEYWORDS = [
@@ -191,14 +196,16 @@ export function isMilitary(img: RoowusImage): boolean {
   return MILITARY_KEYWORDS.some(kw => haystack.includes(kw));
 }
 
+function fold(s: any): string {
+  return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
 export function isPrivate(img: RoowusImage): boolean {
-  const haystack = [img.Airline, img.Aircraft]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-  if (PRIVATE_KEYWORDS.some(kw => haystack.includes(kw.toLowerCase()))) return true;
-  const loc = (img.Location || '').toString().toLowerCase();
-  return LOCATION_KEYWORDS.some(kw => loc.includes(kw));
+  const haystack = fold([img.Airline, img.Aircraft].filter(Boolean).join(' '));
+  if (ALWAYS_ALLOW.some(kw => haystack.includes(fold(kw)))) return false;
+  if (PRIVATE_KEYWORDS.some(kw => haystack.includes(fold(kw)))) return true;
+  const loc = fold(img.Location);
+  return LOCATION_KEYWORDS.some(kw => loc.includes(fold(kw)));
 }
 
 async function retry<T>(fn: () => Promise<T>, attempts = 3, backoffMs = 300): Promise<T> {
