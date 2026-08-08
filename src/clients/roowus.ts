@@ -24,11 +24,16 @@ const PRIVATE_KEYWORDS = [
   'private', 'general aviation', 'Piper', 'Beechcraft', 'Cirrus', 'Cessna',
   'Mooney', 'Gulfstream', 'Helicopter', 'Eurocopter', 'Agusta', 'Pilatus',
   'Sling', 'Gippsland', 'Robinson', 'Diamond', 'Swidnik', 'Zlin', 'SZD',
-  'Socata', 'Aerospatiale',
+  'Socata', 'Aerospatiale', 'Aero Boero', 'Hawker Siddeley',
+  'Learjet', 'Challenger', 'BD-100', 'BD-700',
+  'Global Express', 'Global 5000', 'Global 6000', 'Global 7500',
+  'Phenom', 'Praetor', 'Lineage', 'Legacy 4', 'Legacy 5', 'Legacy 6',
+  'Tucano', 'C-390', 'EMB-312', 'EMB-314', 'A-29', 'AMX', 'EMB-111',
+  'R-99', 'E-99', 'Xingu', 'Ipanema', 'Seneca', 'Navajo', 'Corisco',
 ];
 
 const ALWAYS_ALLOW = [
-  'concorde',
+  'concorde', 'trident', '748', 'argosy', 'comet',
 ];
 
 const LOCATION_KEYWORDS = [
@@ -197,7 +202,12 @@ export function isMilitary(img: RoowusImage): boolean {
 }
 
 function fold(s: any): string {
-  return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  return String(s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
 }
 
 export function isPrivate(img: RoowusImage): boolean {
