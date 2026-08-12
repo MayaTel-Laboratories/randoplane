@@ -30,10 +30,13 @@ const PRIVATE_KEYWORDS = [
   'Phenom', 'Praetor', 'Lineage', 'Legacy 4', 'Legacy 5', 'Legacy 6',
   'Tucano', 'C-390', 'EMB-312', 'EMB-314', 'A-29', 'AMX', 'EMB-111',
   'R-99', 'E-99', 'Xingu', 'Ipanema', 'Seneca', 'Navajo', 'Corisco',
+  'Mil Mi', 'Mi-8', 'Mi-17', 'Mi-24', 'Mi-26', 'Dassault', 'Raytheon',
+  'Pipistrel', 'Tecnam', 'Sikorsky', 'Kavanagh', 'Robin',
 ];
 
 const ALWAYS_ALLOW = [
   'concorde', 'trident', '748', 'argosy', 'comet',
+  'mercure', 's-38', 's-40', 's-42', 's-43',
 ];
 
 const LOCATION_KEYWORDS = [
