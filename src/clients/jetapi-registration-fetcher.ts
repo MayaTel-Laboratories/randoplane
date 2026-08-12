@@ -81,7 +81,7 @@ const REG_FORMATS: RegFormat[] = [
   { country: 'Greece', prefixes: ['SX-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Turkey', prefixes: ['TC-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
   { country: 'Russia', prefixes: ['RA-'], suffixMin: 5, suffixMax: 5, suffixCharset: DIGITS },
-  { country: 'Soviet Union', prefixes: ['CCCP-'], suffixMin: 5, suffixMax: 5, suffixCharset: DIGITS, weight: 8 },
+  { country: 'Soviet Union', prefixes: ['CCCP-'], suffixMin: 5, suffixMax: 5, suffixCharset: DIGITS, weight: 16, generator: generateSovietReg },
   { country: 'Ukraine', prefixes: ['UR-'], suffixMin: 5, suffixMax: 5, suffixCharset: ALNUM },
   { country: 'Romania', prefixes: ['YR-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALNUM },
   { country: 'Croatia', prefixes: ['9A-'], suffixMin: 3, suffixMax: 3, suffixCharset: ALPHA },
@@ -184,6 +184,18 @@ function generateUsReg(): string {
 
 function generateUsVintageReg(): string {
   return 'NC' + nDigits(randInt(4, 5));
+}
+
+const SOVIET_BLOCKS = [
+  '65', '65', '65', '85', '85', '85', '86', '86', '87', '88',
+  '42', '46', '47', '75', '76', '77', '82', '98',
+];
+
+function generateSovietReg(): string {
+  const block = pick(SOVIET_BLOCKS);
+  let tail = '';
+  for (let i = 0; i < 3; i++) tail += DIGITS.charAt(Math.floor(Math.random() * DIGITS.length));
+  return 'CCCP-' + block + tail;
 }
 
 function generateDprkReg(): string {
